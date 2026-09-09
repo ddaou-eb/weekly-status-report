@@ -1,0 +1,6 @@
+# Client profiles hold real client contact details (names, email addresses),
+# so they are excluded from version control by default. The live copies live
+# in your own Cowork skill folder and are never shared when this skill is.
+# Each teammate builds their own profiles by running the skill's setup.
+*.md
+!README.md
