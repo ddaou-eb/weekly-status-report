@@ -44,7 +44,7 @@ Run setup when the user invokes the skill for a client with **no saved profile**
 3. **Ask in one `AskUserQuestion` card** — one question per field below, recommended default first, and every option a real candidate you actually found. Where a lookup turned up no candidate, pass `options: []` so the user can type the answer. Never author an "Other" option; an empty options array is the free-text form.
    - **Point of contact** — the client recipients, all on the To: line. `multiSelect`; several client contacts is normal.
    - **Internal CC team** — who to copy. `multiSelect`.
-   - **NetSuite project record address** — the project record's email dropbox, which files the sent report to that project record in NetSuite. It looks like `messages.1177491.57162282.2be6f36523@1177491.email.netsuite.com`. Pass `options: []` and have the user paste it from the NetSuite project record; never construct, correct, or infer one, and never resolve it with people tools. An empty answer means this project has no record address — save `""` so no later run asks again.
+   - **NetSuite project record address** — the project record's email dropbox, which files the sent report to that project record in NetSuite. It looks like `messages.0000000.00000000.0000000000@0000000.email.netsuite.com`. Pass `options: []` and have the user paste it from the NetSuite project record; never construct, correct, or infer one, and never resolve it with people tools. An empty answer means this project has no record address — save `""` so no later run asks again.
    - **Engagement lead / Lead Consultant** — the name that appears on the report's People row.
    - **Project Manager** — the PM on the People row.
    - **Account Manager** — the third name on the People row. Offer a single "this engagement has no standing account manager" choice so the user can decline it explicitly rather than it being quietly blank.
@@ -79,7 +79,7 @@ internal_cc:
   - Pat Ray <pray@eidebailly.com>
 # NetSuite project record dropbox - BCC'd on every draft so the sent report files
 # itself to the project record. "" only when the user said this project has none:
-netsuite_record_email: messages.1177491.57162282.2be6f36523@1177491.email.netsuite.com
+netsuite_record_email: messages.0000000.00000000.0000000000@0000000.email.netsuite.com
 # People row - all three are confirmed at setup, never inferred at run time:
 lead_consultant: Dana Reed   # the engagement lead named on the report
 project_manager: Chris Lee   # the PM named on the report
