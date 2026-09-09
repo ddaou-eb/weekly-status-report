@@ -15,7 +15,6 @@ Your client profiles never leave your own copy: the `clients/` folder ships empt
 - `SKILL.md` — the skill's instructions
 - `scripts/build_report.py` — the HTML renderer
 - `templates/weekly-status-template.html` — the branded email template
-- `assets/eb-logo.png` — Eide Bailly logo used in the report
 - `clients/` — where your own client profiles get saved (empty here on purpose)
 
 ## Updates
