@@ -41,13 +41,14 @@ Run setup when the user invokes the skill for a client with **no saved profile**
 
 1. **Get the client name.** Take it from the request ("weekly status for **Acme**"). If absent, ask (`AskUserQuestion` with `options: []` for a free-text answer).
 2. **Look up before asking.** Search recent calendar and email for that client to infer the **email domain**, the likely **point of contact**, and who from the firm is on the engagement (`SearchM365`, `ListMessages`, `SearchPeople`, `GetUserDetails`, `GetMyDetails`). Resolve, never guess or construct an address.
-3. **Ask in one `AskUserQuestion` card** — one question per field below, recommended default first, and every option a real candidate you actually found. Where a lookup turned up no candidate, pass `options: []` so the user can type the answer. Never author an "Other" option; an empty options array is the free-text form.
+3. **Ask the canonical setup questions in one `AskUserQuestion` card**, in the order listed below. Ask every field on every setup; do not omit or combine questions based on inference. Use the listed labels and defaults, with real candidates you actually found as options. Where a lookup turned up no candidate, pass `options: []` so the user can type the answer. Never author an "Other" option; an empty options array is the free-text form. The action-item log URL is the only conditional follow-up: ask for it only after the user opts in.
    - **Point of contact** — the client recipients, all on the To: line. `multiSelect`; several client contacts is normal.
    - **Internal CC team** — who to copy. `multiSelect`.
-   - **NetSuite project record address** — the project record's email dropbox, which files the sent report to that project record in NetSuite. It looks like `messages.0000000.00000000.0000000000@0000000.email.netsuite.com`. Pass `options: []` and have the user paste it from the NetSuite project record; never construct, correct, or infer one, and never resolve it with people tools. An empty answer means this project has no record address — save `""` so no later run asks again.
+   - **NetSuite project record filing email** — ask: *"What is the NetSuite project's email address for filing the report? This is an email address, not the project or record number."* It is the record's email dropbox, which files the sent report to that project record. It looks like `messages.0000000.00000000.0000000000@0000000.email.netsuite.com`. Pass `options: []` and have the user paste it from the NetSuite project record; never construct, correct, or infer one, and never resolve it with people tools. An empty answer means this project has no record email — save `""` so no later run asks again.
    - **Engagement lead / Lead Consultant** — the name that appears on the report's People row.
    - **Project Manager** — the PM on the People row.
    - **Account Manager** — the third name on the People row. Offer a single "this engagement has no standing account manager" choice so the user can decline it explicitly rather than it being quietly blank.
+   - **Action-item log link** — *No link* (default) · *Yes, include a link*. If yes, ask the user to paste the log's HTTPS URL; it may be in Smartsheet, Azure DevOps, or another service.
    - **Hours tiles** — *Show Est/Actual/% from PM Reports* (default) · *Leave hours off this client's report*.
    - **Outstanding Invoices** — *Leave it off* (default) · *Include open AR*.
    - **Scan client email too?** — *No, meetings only* (default) · *Yes, also scan email from this client*.
@@ -77,9 +78,11 @@ point_of_contact:            # one or several client recipients, all on the To: 
 internal_cc:
   - Chris Lee <clee@eidebailly.com>
   - Pat Ray <pray@eidebailly.com>
-# NetSuite project record dropbox - BCC'd on every draft so the sent report files
-# itself to the project record. "" only when the user said this project has none:
+# NetSuite project record filing email (not the project/record number) - BCC'd on
+# every draft so the sent report files itself to the project record. "" only when
+# the user said this project has no record email:
 netsuite_record_email: messages.0000000.00000000.0000000000@0000000.email.netsuite.com
+action_item_log_url: ""    # optional HTTPS URL; shown as "See more detail here"
 # People row - all three are confirmed at setup, never inferred at run time:
 lead_consultant: Dana Reed   # the engagement lead named on the report
 project_manager: Chris Lee   # the PM named on the report
@@ -102,6 +105,8 @@ If a setting needs to change, the user says so and you edit the profile. Do not 
 A profile saved before the People row was confirmed at setup may be missing `lead_consultant`, `project_manager`, or `account_manager`. When a run finds one missing, **ask for it once and write the answer back** — never render the report with an invented name or a silent blank where a person belongs. Older profiles spell the third name `sponsor`; the renderer still accepts that key, so rename it on the next edit rather than re-asking the user for a name they already gave.
 
 The same applies to `netsuite_record_email` on a profile saved before that field existed: ask once, then write the answer back — including `""` when the user says there is none, so the question is never asked twice.
+
+The same applies to `action_item_log_url`: when it is missing from an older profile, ask once whether the user wants a log link, then save the HTTPS URL or `""` for no link.
 
 ---
 
@@ -135,15 +140,17 @@ On the **batch run**, do step 1 once, then repeat steps 2 through 7 per client. 
    If the profile has no `powerbi_report` yet (an older profile, or setup could not find it), do the discovery **once** with `SearchM365(sources=["powerbi"])`, then **write both ids back to the profile** so no later run repeats the search. If the read fails or the project is missing, **leave those fields blank** rather than guessing. Never fabricate hours.
 
 7. **Extract, build, and draft.**
-   - Extract progress, decisions, and action items, applying the **Client-Safety Rules** and the **Brevity and Plain Language** caps below. Consolidate topics that repeat across meetings. Next steps belong in the action items, each with an owner; the single forward-looking date goes in `next_checkpoint`.
+   - If there are no qualifying client meetings, set the Project Summary to **"No client meetings were held this week."** Do not skip the report. Still use any enabled email scan and the available hours, invoices, risks, and action-item log link; do not imply those facts came from a meeting.
+   - Otherwise, extract progress, decisions, and action items, applying the **Client-Safety Rules** and the **Brevity and Plain Language** caps below. Consolidate topics that repeat across meetings. Next steps belong in the action items, each with an owner; the single forward-looking date goes in `next_checkpoint`.
+   - When `action_item_log_url` is set, include **"See more detail here"** linked to that URL beneath the Project Summary. Never invent or search for a log URL.
    - Fill the People row from the profile's `lead_consultant`, `project_manager`, and `account_manager`. If any of the three is missing, **ask once** (`AskUserQuestion`) and write the answer back to the profile before drafting. Never invent a name here.
    - Write the facts to a content JSON (schema in *Branding & Formatting*) and run `python scripts/build_report.py <content.json> working/<client-slug>.html`. Do **not** hand-write or restyle the HTML.
    - `CreateDraftMessage` to the point of contact, CC the internal team, and **BCC the profile's `netsuite_record_email`** so the report files itself to the NetSuite project record when the user sends it. `CreateDraftMessage` supports `bcc`, so use BCC and the client never sees the address; fall back to the CC line only if a BCC cannot be set. Skip it entirely when the profile has none. `body_file_path` points at the rendered file. **Draft only. Never send.**
    - Subject line: **`Weekly Status Update | [Client] | [Report date]`**.
 
-8. **No-meeting case.** If no meetings qualify for a client that week, **skip that client silently**. Do not draft, and do not draft an empty report. On the batch run, carry on to the next client.
+8. **Always draft the weekly report.** Create a report for every client with a saved profile, whether or not a client meeting qualified that week. A no-meeting report still includes available weekly data and explicitly says no client meetings were held.
 
-9. **Close the batch** with one short message naming which clients have drafts waiting, which were skipped for having no meetings, and any client whose hours could not be read.
+9. **Close the batch** with one short message naming which clients have drafts waiting and any client whose hours could not be read.
 
 ---
 
@@ -195,6 +202,8 @@ A navy hero header, a row of KPI stat tiles, and airy overline sections. In orde
 
 **Project Summary** — one or two sentences on the week's focus.
 
+When configured, an **"See more detail here"** link to the client's action-item log appears directly beneath the Project Summary.
+
 Then these overline sections, skipping any with nothing explicit to report:
 - **Work Completed** — up to **3** accomplishments (green bullets).
 - **Decisions** — up to **3**; explicit decisions only.
@@ -228,6 +237,7 @@ Add `--wordmark` to force the text mark even when `logo_url` is set — it previ
   "show_hours": true,
   "pm": "…", "lead_consultant": "…", "account_manager": "…", "sponsor_label": "Account Manager",
   "summary": "one or two sentences",
+  "action_item_log_url": "https://...",
   "work_completed": ["…"], "decisions": ["…"],
   "action_items": [{"text": "…", "owner": "Name or TBD"}],
   "next_checkpoint": "Weekly status call, Wednesday September 2 at 11:00 AM ET",
@@ -241,6 +251,7 @@ Add `--wordmark` to force the text mark even when `logo_url` is set — it previ
 - `account_manager` is the third People-row name. The legacy key `sponsor` is still read, so profiles written before the relabel keep working.
 - Omit any hours value you could not read and the tile shows a dash. Omit or empty any content list to drop that whole section. Omit `invoices` to hide that section.
 - `next_checkpoint` renders as one bold line under the action items. Omit it and the line disappears; the action-items block still renders for the checkpoint alone if there are no open items.
+- `action_item_log_url` is optional; when present, it must be an HTTPS URL and renders beneath the Project Summary as **"See more detail here"**. Omit it or use `""` to hide the link.
 - `next_steps` is retired. It is still accepted and folded into `action_items` so older content files keep working, but write next steps straight into `action_items` with an owner.
 - Never fabricate figures. Leave a value out rather than guessing.
 - `logo_url` is optional and must be `https://`. Omit it and the renderer draws the text wordmark; `data:` and `cid:` are both rejected outright (see *The brand mark* — neither can render).
@@ -266,7 +277,7 @@ Two rules. Break either and the email looks fine in the rendered file and wrong 
 
 **Verifying a template change end to end.** The rendered file is not evidence; only the stored draft is. Create a throwaway draft with `CreateDraftMessage`, read the body back with `QueryGraph` on `/me/messages/{id}?$select=body`, and confirm no `style=""` appears and the sheet still says `width:600px`. Then delete the test draft.
 
-**The brand mark.** The hero band shows the real Eide Bailly logo **only when the profile sets `logo_url`** to an https-hosted copy. With no `logo_url` it draws a live-text wordmark. That is not a stylistic preference — it is the only route that works, and the two alternatives were tested to destruction on this tenant:
+**The brand mark.** The hero band shows the real `assets/eb-logo.png` **only when the profile sets `logo_url`** to an https-hosted copy. With no `logo_url` it draws a live-text wordmark. That is not a stylistic preference — it is the only route that works, and the two alternatives were tested to destruction on this tenant:
 
 - **`data:` — stripped.** `<img src="data:image/png;base64,…">` arrives in the draft with no `src` at all and shows a 118×53 empty box. The renderer rejects a `data:` `logo_url` outright.
 - **`cid:` — survives, but cannot be bound.** A `cid:` src passes through the pipeline intact, so it looks promising. Binding it needs `POST /me/messages/{id}/attachments` with `isInline: true` and a `contentId`. **Raw Graph POST is refused** — the platform forces the dedicated tool for any path that has one — and the dedicated tools (`AddDraftAttachments`, `UploadAttachment`) expose neither field. Passing the attachment inline to `POST /me/messages` is refused the same way. An unbound `cid:` renders as an empty box exactly like `data:` did. The renderer rejects a `cid:` `logo_url` too, so nobody re-derives this.

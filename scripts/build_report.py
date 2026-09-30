@@ -79,6 +79,7 @@ import json
 import pathlib
 import re
 from html import escape
+from urllib.parse import urlsplit
 
 HERE = pathlib.Path(__file__).resolve().parent
 SKILL = HERE.parent
@@ -549,6 +550,22 @@ def next_checkpoint_html(value):
             '<strong>Next checkpoint:</strong> {}</p>'.format(txt(value)))
 
 
+def action_item_log_link_html(value):
+    """Render the optional external action-item log link."""
+    if not value:
+        return ""
+    url = str(value).strip()
+    parsed = urlsplit(url)
+    if parsed.scheme.lower() != "https" or not parsed.hostname or parsed.username or parsed.password:
+        sys.exit("ERROR: action_item_log_url must be an HTTPS URL with a host.")
+    return (
+        '<p style="margin:8px 0 0;font-family:Calibri,\'Segoe UI\',Arial,sans-serif;'
+        'font-size:14px;line-height:1.5;color:#0E172D;">'
+        '<a href="{url}" style="color:#267A45;text-decoration:underline;">'
+        'See more detail here</a></p>'.format(url=attr(url))
+    )
+
+
 def main():
     flags = {a for a in sys.argv[1:] if a.startswith("--")}
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
@@ -600,6 +617,7 @@ def main():
         "[[SPONSOR]]": txt(content.get("account_manager") or content.get("sponsor") or ""),
         "[[SPONSOR_LABEL]]": txt(content.get("sponsor_label") or DEFAULT_SPONSOR_LABEL),
         "[[SUMMARY]]": txt(content.get("summary", "")),
+        "[[ACTION_ITEM_LOG_LINK]]": action_item_log_link_html(content.get("action_item_log_url")),
         "[[FOOTER_FIRM]]": txt(sig.get("firm") or DEFAULT_FIRM),
         # these are already-assembled HTML fragments, not raw text
         "[[WORK_COMPLETED]]": bullets(content.get("work_completed", [])),
