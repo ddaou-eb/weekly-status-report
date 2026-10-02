@@ -57,14 +57,14 @@ content.json schema (all keys optional unless noted):
   "work_completed": ["...", "..."],         # empty/omitted -> section removed
   "next_steps": ["...", "..."],
   "decisions": ["..."],
-  "action_items": [{"text": "...", "owner": "Name or TBD"}],   # max 5, <=20 words each
+  "action_items": [{"text": "...", "owner": "Name"}],   # max 3, <=20 words each, owner required
   "next_checkpoint": "Weekly status call, Wednesday Sept 2 at 11:00 AM ET",
                                             # renders as one bold line under the
                                             # action items; replaces the old
                                             # Next Steps section
   # "next_steps" is NO LONGER a section. It duplicated the action items one for
   # one, so an older content file's next_steps entries are folded into
-  # action_items automatically (owner "TBD" when none was stated).
+  # action_items automatically; one without a named owner fails the build.
   "risks": [{"risk": "...", "mitigation": "..."}],   # or ["plain string", ...]
   "invoices": {                             # optional; omit to hide the section
      "rows": [{"invoice": "...", "date": "...", "days": "30", "amount": "$5,250.00"}],
@@ -127,9 +127,9 @@ BANNED_CSS = ("border-radius", "max-width", "overflow", "mso-", "-webkit-", "-ms
 # working email threads, which is where it belongs.
 MAX_ITEMS = {
     "work_completed": 3,
-    "decisions": 3,
-    "action_items": 5,
-    "risks": 2,
+    "decisions": 2,
+    "action_items": 3,
+    "risks": 1,
 }
 MAX_BULLET_WORDS = 20      # one line, readable at a glance
 MAX_SUMMARY_WORDS = 40     # two short sentences
@@ -438,8 +438,8 @@ def fold_next_steps(content):
     owned list and this folds any older content forward rather than breaking it.
 
     Accepts plain strings or {"text": ..., "owner": ...}. A bare string has no
-    stated owner, so it becomes "TBD" - the same rule the skill applies to an
-    action item whose owner was never named out loud.
+    stated owner, so it becomes "TBD" and enforce_brevity then rejects it: an
+    item nobody committed to by name does not belong in a client report.
     """
     steps = content.pop("next_steps", None)
     if not steps:
@@ -485,6 +485,12 @@ def enforce_brevity(content):
 
     for i, a in enumerate(content.get("action_items") or [], 1):
         too_long("action_items[{}]".format(i), a.get("text", ""), MAX_BULLET_WORDS)
+        owner = str(a.get("owner") or "").strip()
+        if not owner or owner.upper() == "TBD":
+            problems.append(
+                'action_items[{}] has no named owner. If nobody committed to it '
+                'by name, drop it: "{}"'.format(
+                    i, " ".join(str(a.get("text", "")).split()[:8]) + "..."))
 
     for i, r in enumerate(content.get("risks") or [], 1):
         if isinstance(r, str):
@@ -498,7 +504,7 @@ def enforce_brevity(content):
         too_long("next_checkpoint", content["next_checkpoint"], MAX_BULLET_WORDS)
 
     if problems:
-        sys.exit("ERROR: this report is too long to be read:\n  - "
+        sys.exit("ERROR: this report is not ready to send:\n  - "
                  + "\n  - ".join(problems))
 
 

@@ -133,7 +133,9 @@ On the **batch run**, do step 1 once, then repeat steps 2 through 7 per client. 
 
    Never pull both for the same meeting.
 
-5. **Client email, only if the profile opts in.** When `scan_email: true`, call `ListMessages` once, filtered to the client's qualifying domains for the week. Do not also call `SearchM365` for the same thing. When `scan_email: false`, skip this entirely.
+   A recap's suggested follow-up tasks are written by Teams, not said by the people on the call. Treat them as candidates and apply the **Evidence Bar** before keeping any of them.
+
+5. **Client email, only if the profile opts in.** When `scan_email: true`, call `ListMessages` once on the Inbox for mail from the client's qualifying domains, and once on Sent Items for mail the user sent to them, both for the week. Sent mail matters: it is often where an item was already delivered. Do not also call `SearchM365` for the same thing. When `scan_email: false`, skip this entirely.
 
 6. **Pull project hours.** Read this client's **Estimated Hours**, **Actual / Billable Hours**, **% of Estimate**, and estimated completion date directly from the `powerbi_report` and `powerbi_project` saved on the profile. This is a direct read, not a search: the discovery happened at setup.
 
@@ -141,7 +143,7 @@ On the **batch run**, do step 1 once, then repeat steps 2 through 7 per client. 
 
 7. **Extract, build, and draft.**
    - If there are no qualifying client meetings, set the Project Summary to **"No client meetings were held this week."** Do not skip the report. Still use any enabled email scan and the available hours, invoices, risks, and action-item log link; do not imply those facts came from a meeting.
-   - Otherwise, extract progress, decisions, and action items, applying the **Client-Safety Rules** and the **Brevity and Plain Language** caps below. Consolidate topics that repeat across meetings. Next steps belong in the action items, each with an owner; the single forward-looking date goes in `next_checkpoint`.
+   - Otherwise, read the week's meetings and email **oldest to newest** and extract progress, decisions, and action items, applying the **Evidence Bar**, the **Client-Safety Rules**, and the **Brevity and Plain Language** caps below. Consolidate topics that repeat across meetings. Next steps belong in the action items, each with a named owner; the single forward-looking date goes in `next_checkpoint`.
    - When `action_item_log_url` is set, include **"See more detail here"** linked to that URL beneath the Project Summary. Never invent or search for a log URL.
    - Fill the People row from the profile's `lead_consultant`, `project_manager`, and `account_manager`. If any of the three is missing, **ask once** (`AskUserQuestion`) and write the answer back to the profile before drafting. Never invent a name here.
    - Write the facts to a content JSON (schema in *Branding & Formatting*) and run `python scripts/build_report.py <content.json> working/<client-slug>.html`. Do **not** hand-write or restyle the HTML.
@@ -154,12 +156,23 @@ On the **batch run**, do step 1 once, then repeat steps 2 through 7 per client. 
 
 ---
 
+## Evidence Bar
+
+Missing a small item is acceptable. Telling a client something that was never agreed is not. **When in doubt, leave it out.** An empty section is dropped from the report, and that is a fine outcome.
+
+- **Action item:** only when a named person committed out loud, in their own words (*"I'll send the check formats"*). A topic that was discussed, a suggestion, or an idea someone floated is not an action item. If nobody took it on by name, it is not an action item: drop it. Never write `Owner: TBD`.
+- **Decision:** only when the people on the call agreed to it (*"let's go with the UI"*). An option still under discussion is not a decision.
+- **Work completed:** only what someone said is done.
+- **Risk:** off by default. Include one only when someone on the call explicitly raised a concern about schedule, budget, or go-live. Testing still in progress, configuration not yet done, or a decision still pending is normal project progress, not a risk.
+- **Latest word wins.** When a later meeting or email changes, completes, or reverses an earlier item, the later one replaces it. If someone changed their approach, report the new one or nothing. Anything already delivered, including by email, comes off the action list.
+- **Recap follow-ups are leads, not facts.** Keep one only if the recap's notes show a named person committing to it. If they do not, drop it.
+
 ## Client-Safety Rules
 
 The output is client-facing and must be safe to send directly to a client. Always:
 - **Exclude** internal opinions, resourcing and staffing, internal fee or scope disputes, and any speculation. (An **Outstanding Invoices** summary of what the client already owes *is* client-facing and may be included when the profile opts in.)
 - **Never invent information.** If something is unclear, omit it.
-- If an action item's owner is not stated, write **`Owner: TBD`**.
+- Every action item has a **named owner**. No owner means the item is left out (see the Evidence Bar).
 - If a due date is not stated, **omit** it. Do not guess.
 - **Consolidate** repeating topics across meetings.
 - Prefer **fewer, clearer** items over exhaustive lists.
@@ -173,9 +186,9 @@ The reader is a controller or an owner, not a consultant, and is reading between
 | Limit | Cap |
 |---|---|
 | Work Completed | 3 items |
-| Decisions | 3 items |
-| Open Action Items | 5 items |
-| Risks | 2 items |
+| Decisions | 2 items |
+| Open Action Items | 3 items, each with a named owner |
+| Risks | 1 item, and none by default |
 | Any bullet, action item, or the checkpoint line | **20 words** |
 | Project Summary | 40 words (two short sentences) |
 | Risk and mitigation, counted separately | 30 words each |
@@ -206,12 +219,12 @@ When configured, an **"See more detail here"** link to the client's action-item 
 
 Then these overline sections, skipping any with nothing explicit to report:
 - **Work Completed** — up to **3** accomplishments (green bullets).
-- **Decisions** — up to **3**; explicit decisions only.
-- **Open Action Items** — up to **5**, `☐ [item] (Owner: [Name or TBD])`, then one bold **Next checkpoint:** line drawn from `next_checkpoint`.
+- **Decisions** — up to **2**; explicit decisions only.
+- **Open Action Items** — up to **3**, `☐ [item] (Owner: [Name])`, then one bold **Next checkpoint:** line drawn from `next_checkpoint`.
 
-  **This is also where next steps go.** There is no separate Next Steps section. It duplicated this list one for one — the same four commitments appeared in both on a real report — so the two were merged into a single owned list. A `next_steps` array in an older content file is folded in here automatically, with owner `TBD` where none was stated.
+  **This is also where next steps go.** There is no separate Next Steps section. It duplicated this list one for one — the same four commitments appeared in both on a real report — so the two were merged into a single owned list. A `next_steps` array in an older content file is folded in here automatically; any entry without a named owner then fails the build.
 
-**Risk / Mitigation** — a highlighted card; 0 to 2 explicitly stated risks, each with a mitigation if known.
+**Risk / Mitigation** — a highlighted card; normally absent. At most **1** risk, and only one someone on the call explicitly raised, with a mitigation if known.
 
 **Outstanding Invoices** (only when the profile opts in) — open AR for the project: *Invoice, Date, Days Open, Amount Due* plus a **Total Due** row, with the standard late-fee and Online Bill Pay note. Populate from billing or AR data. Never invent invoice figures.
 
@@ -239,7 +252,7 @@ Add `--wordmark` to force the text mark even when `logo_url` is set — it previ
   "summary": "one or two sentences",
   "action_item_log_url": "https://...",
   "work_completed": ["…"], "decisions": ["…"],
-  "action_items": [{"text": "…", "owner": "Name or TBD"}],
+  "action_items": [{"text": "…", "owner": "Name"}],
   "next_checkpoint": "Weekly status call, Wednesday September 2 at 11:00 AM ET",
   "risks": [{"risk": "…", "mitigation": "…"}],
   "invoices": {"rows": [{"invoice": "…", "date": "…", "days": "30", "amount": "$5,250.00"}], "total": "$10,500.00"},
@@ -252,7 +265,8 @@ Add `--wordmark` to force the text mark even when `logo_url` is set — it previ
 - Omit any hours value you could not read and the tile shows a dash. Omit or empty any content list to drop that whole section. Omit `invoices` to hide that section.
 - `next_checkpoint` renders as one bold line under the action items. Omit it and the line disappears; the action-items block still renders for the checkpoint alone if there are no open items.
 - `action_item_log_url` is optional; when present, it must be an HTTPS URL and renders beneath the Project Summary as **"See more detail here"**. Omit it or use `""` to hide the link.
-- `next_steps` is retired. It is still accepted and folded into `action_items` so older content files keep working, but write next steps straight into `action_items` with an owner.
+- `next_steps` is retired. It is still accepted and folded into `action_items`, but write next steps straight into `action_items` with an owner. A bare-string next step has no owner, so it fails the build.
+- An action item with no owner, or an owner of `TBD`, fails the build. Drop the item rather than inventing an owner.
 - Never fabricate figures. Leave a value out rather than guessing.
 - `logo_url` is optional and must be `https://`. Omit it and the renderer draws the text wordmark; `data:` and `cid:` are both rejected outright (see *The brand mark* — neither can render).
 - `signature.firm` is plain **`"Eide Bailly"`** — never a legal suffix. See *Firm name* below.
@@ -310,11 +324,11 @@ Scheduled runs are safe unattended because the skill only ever drafts.
 
 ## Guardrails
 - **Draft only.** This skill has no send path. Prepare the email; the user sends it.
-- **Ground everything** in retrieved recaps, transcripts, notes, and email. Never fabricate progress, decisions, owners, or dates.
+- **Ground everything** in retrieved recaps, transcripts, notes, and email. Never fabricate progress, decisions, owners, or dates. Apply the Evidence Bar: when in doubt, leave it out.
 - **Client-appropriate only.** Apply the Client-Safety Rules to every line.
 - **Domain scoping.** Only content tied to this client's qualifying domains. An extra domain widens one client's report, never the boundary between clients: never leak another client's material.
 - **Resolve recipients** with people tools. If a name has multiple matches, confirm before saving.
 - **The NetSuite record address is a machine dropbox, not a person.** BCC it (CC only if a BCC cannot be set), never put it on the To: line, and never look it up with people tools. Copy it verbatim from the project record — a mistyped address silently files nothing.
 - **Confirm, don't infer.** Every field that reaches the report — recipients, CC, and the People row — is confirmed with the user at setup. If a value is missing or uncertain at run time, ask once and write it back to the profile rather than guessing or shipping a blank.
-- **Retrieve once.** One calendar pull per run, one source per meeting, one email query when enabled. Retrieval is what this costs to run.
+- **Retrieve once.** One calendar pull per run, one source per meeting, one Inbox and one Sent Items query when email is enabled. Retrieval is what this costs to run.
 - **Portable.** Keep settings in `clients/`, and keep the skill free of personal data and of references to other skills, so it can be deployed across the team.
