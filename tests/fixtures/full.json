@@ -1,0 +1,22 @@
+{
+  "client": "Acme Corporation",
+  "report_date": "July 24, 2026",
+  "logo_url": "https://example.com/eb-logo.png",
+  "est_hours": "120",
+  "act_hours": "47.5",
+  "pct_estimate": "40",
+  "completion_short": "Aug 3",
+  "show_hours": true,
+  "pm": "Chris Lee",
+  "lead_consultant": "Dana Reed",
+  "account_manager": "Pat Ray",
+  "summary": "Testing wrapped up on purchasing & receiving. Next week we move to the <finance> walkthrough.",
+  "action_item_log_url": "https://example.com/log",
+  "work_completed": ["Purchasing setup finished and signed off", "Vendor list loaded"],
+  "decisions": ["Use the standard approval workflow"],
+  "action_items": [{"text": "Send the check formats", "owner": "Jane Smith"}],
+  "next_checkpoint": "Weekly status call, Wednesday July 29 at 11:00 AM ET",
+  "risks": [{"risk": "Go-live date depends on bank file approval", "mitigation": "Bank contact engaged this week"}],
+  "invoices": {"rows": [{"invoice": "INV-1001", "date": "Jun 1, 2026", "days": "53", "amount": "$5,250.00"}], "total": "$5,250.00"},
+  "signature": {"name": "Chris Lee", "title": "Project Manager", "firm": "Eide Bailly", "email": "clee@example.com", "phone": "555-0100"}
+}

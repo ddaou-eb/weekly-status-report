@@ -1,0 +1,13 @@
+{
+  "client": "Initech",
+  "report_date": "September 4, 2026",
+  "show_hours": false,
+  "pm": "Chris Lee",
+  "lead_consultant": "Dana Reed",
+  "sponsor": "Sam Park",
+  "sponsor_label": "Project Sponsor",
+  "completion_label": "Est. Completion",
+  "summary": "Reports were reviewed and approved.",
+  "next_steps": [{"text": "Schedule training", "owner": "Dana Reed"}],
+  "signature": {"name": "Chris Lee", "email": "clee@example.com"}
+}

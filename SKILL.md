@@ -41,7 +41,7 @@ Run setup when the user invokes the skill for a client with **no saved profile**
 
 1. **Get the client name.** Take it from the request ("weekly status for **Acme**"). If absent, ask (`AskUserQuestion` with `options: []` for a free-text answer).
 2. **Look up before asking.** Search recent calendar and email for that client to infer the **email domain**, the likely **point of contact**, and who from the firm is on the engagement (`SearchM365`, `ListMessages`, `SearchPeople`, `GetUserDetails`, `GetMyDetails`). Resolve, never guess or construct an address.
-3. **Ask the canonical setup questions in one `AskUserQuestion` card**, in the order listed below. Ask every field on every setup; do not omit or combine questions based on inference. Use the listed labels and defaults, with real candidates you actually found as options. Where a lookup turned up no candidate, pass `options: []` so the user can type the answer. Never author an "Other" option; an empty options array is the free-text form. The action-item log URL is the only conditional follow-up: ask for it only after the user opts in.
+3. **Ask the canonical setup questions in one `AskUserQuestion` card**, in the order listed below. Ask every field on every setup; do not omit or combine questions based on inference. Use the listed labels and defaults, with real candidates you actually found as options. Where a lookup turned up no candidate, pass `options: []` so the user can type the answer. Never author an "Other" option; an empty options array is the free-text form. The action-item log URL and the monthly hour budget are the only conditional follow-ups: ask for each only after the user opts in.
    - **Point of contact** — the client recipients, all on the To: line. `multiSelect`; several client contacts is normal.
    - **Internal CC team** — who to copy. `multiSelect`.
    - **NetSuite project record filing email** — ask: *"What is the NetSuite project's email address for filing the report? This is an email address, not the project or record number."* It is the record's email dropbox, which files the sent report to that project record. It looks like `messages.0000000.00000000.0000000000@0000000.email.netsuite.com`. Pass `options: []` and have the user paste it from the NetSuite project record; never construct, correct, or infer one, and never resolve it with people tools. An empty answer means this project has no record email — save `""` so no later run asks again.
@@ -50,10 +50,11 @@ Run setup when the user invokes the skill for a client with **no saved profile**
    - **Account Manager** — the third name on the People row. Offer a single "this engagement has no standing account manager" choice so the user can decline it explicitly rather than it being quietly blank.
    - **Action-item log link** — *No link* (default) · *Yes, include a link*. If yes, ask the user to paste the log's HTTPS URL; it may be in Smartsheet, Azure DevOps, or another service.
    - **Hours tiles** — *Show Est/Actual/% from PM Reports* (default) · *Leave hours off this client's report*.
+   - **Managed services** — *No, a standard project* (default) · *Yes, track hours against a monthly budget*. If yes, ask for the **monthly hour budget** as a number (`options: []`); it differs per client, so never assume one.
    - **Outstanding Invoices** — *Leave it off* (default) · *Include open AR*.
 
    Resolve every chosen person to a real address (recipients) or full display name (People row) before saving.
-4. **Pin the Power BI project.** Locate the firm's **PM Reports** model once, here at setup, with `SearchM365(sources=["powerbi"])`. Save the model id as `powerbi_report` and the row/project identifier this client's hours live under as `powerbi_project`. **Do not defer this to the weekly run.** If the project genuinely cannot be found, save `show_hours: false` and tell the user the hours tiles will be blank until it is set.
+4. **Pin the Power BI project.** Locate the firm's **PM Reports** model once, here at setup, with `SearchM365(sources=["powerbi"])`. Save the model id as `powerbi_report` and the row/project identifier this client's hours live under as `powerbi_project`. `powerbi_project` names **one project**, never the whole client: a client can have several projects, and the hours read must not mix them. When the engagement is managed services, put the candidate project in front of the user and confirm it is the managed services project before saving. **Do not defer this to the weekly run.** If the project genuinely cannot be found, save `show_hours: false` and tell the user the hours tiles will be blank until it is set.
 5. **Save the profile** to `clients/<client-slug>.md` (format below).
 6. **Make sure the weekly task exists.** Call `GetScheduledPrompts`. If the batch task is already there, say so and change nothing. If not, create it (see *Scheduling*). One task total, for all clients.
 7. **Confirm in plain language**: *"All set. Acme joins the Friday 9 AM run, and I'll have a draft waiting for your review, copying [CC team] and BCC'ing the NetSuite project record. You can also ask for it anytime with 'weekly status for Acme'."* Leave the NetSuite clause out when no record address was saved.
@@ -87,10 +88,12 @@ lead_consultant: Dana Reed   # the engagement lead named on the report
 project_manager: Chris Lee   # the PM named on the report
 account_manager: Pat Ray     # third name on the People row; "" only when the user said there is none
 powerbi_report: rpt_1        # PM Reports model id, pinned at setup
-powerbi_project: ACME-2026   # the project/row this client's hours sit under
+powerbi_project: ACME-2026   # the ONE project this report's hours are read for, never the whole client
 # Section/field preferences:
 include_invoices: false      # include the Outstanding Invoices section?
-show_hours: true             # show the four stat tiles?
+show_hours: true             # show the stat tiles?
+managed_services: false      # true = three current-month tiles against monthly_budget_hours
+monthly_budget_hours: 30     # only when managed_services is true; fixed per client, no rollover
 logo_url: ""                 # optional https-hosted logo; "" = built-in wordmark. NEVER a data: URI
 ---
 Optional notes about this engagement.
@@ -105,6 +108,8 @@ A profile saved before the People row was confirmed at setup may be missing `lea
 The same applies to `netsuite_record_email` on a profile saved before that field existed: ask once, then write the answer back — including `""` when the user says there is none, so the question is never asked twice.
 
 The same applies to `action_item_log_url`: when it is missing from an older profile, ask once whether the user wants a log link, then save the HTTPS URL or `""` for no link.
+
+A profile with no `managed_services` key is a standard project: do not ask about it on a run. The user turns it on by asking, and then `monthly_budget_hours` is required. If `managed_services` is true and `monthly_budget_hours` is missing, ask once and write it back.
 
 ---
 
@@ -138,6 +143,8 @@ On the **batch run**, do step 1 once, then repeat steps 2 through 7 per client. 
    - **Teams chats:** one pass over the user's Teams chat messages for the week, keeping only chats where at least one participant is on a qualifying domain. Use the Teams chat tools available in Cowork. A chat with no participant on a qualifying domain is never used.
 
 6. **Pull project hours.** Read this client's **Estimated Hours**, **Actual / Billable Hours**, **% of Estimate**, and estimated completion date directly from the `powerbi_report` and `powerbi_project` saved on the profile. This is a direct read, not a search: the discovery happened at setup.
+
+   **Managed services (`managed_services: true`):** read **month-to-date hours for the `powerbi_project` project only**, from the 1st of the current calendar month through today. Do not read Estimated Hours, % of Estimate, or the completion date, and do not add other projects for the same client. Note today's date as `hours_as_of`: time entered late is not counted yet, so the report shows when the hours were pulled. Pass `monthly_budget_hours` from the profile as is. No rollover from earlier months, and no month-end projection.
 
    If the profile has no `powerbi_report` yet (an older profile, or setup could not find it), do the discovery **once** with `SearchM365(sources=["powerbi"])`, then **write both ids back to the profile** so no later run repeats the search. If the read fails or the project is missing, **leave those fields blank** rather than guessing. Never fabricate hours.
 
@@ -211,6 +218,8 @@ A navy hero header, a row of KPI stat tiles, and airy overline sections. In orde
 
 **Stat tiles** (four) — **Est. Hours**, **Actual Hours**, **% of Estimate** (navy tile, green number), **Est. Go Live** (short form, e.g. "Aug 3"). The first three come from PM Reports; a tile shows a dash when the data is unavailable. There is no budget bar: a percentage-width fill bar cannot survive the mail pipeline (see *What the mail pipeline does to this HTML*), and the **% of Estimate** tile already carries the number.
 
+**Managed services stat tiles** (three, when the profile sets `managed_services: true`) — **Monthly Budget**, **Used This Month**, **Remaining** (navy tile, green number), for the current calendar month only, with a small **Hours as of [date]** line beneath. Used This Month turns red when it is over the budget, with no other wording; Remaining then shows 0.
+
 **People row** — Project Manager, Lead Consultant, Account Manager, each taken from the profile where it was confirmed at setup.
 
 **Project Summary** — one or two sentences on the week's focus.
@@ -248,6 +257,7 @@ Add `--wordmark` to force the text mark even when `logo_url` is set — it previ
   "est_hours": "120", "act_hours": "47.5", "pct_estimate": "40%",
   "completion_short": "Aug 3", "completion_label": "Est. Go Live",
   "show_hours": true,
+  "managed_services": false, "monthly_budget_hours": "30", "month_hours_used": "12.5", "hours_as_of": "October 9, 2026",
   "pm": "…", "lead_consultant": "…", "account_manager": "…", "sponsor_label": "Account Manager",
   "summary": "one or two sentences",
   "action_item_log_url": "https://...",
@@ -262,6 +272,7 @@ Add `--wordmark` to force the text mark even when `logo_url` is set — it previ
 - `pct_estimate` takes either `"40%"` or `"40"`; the renderer normalizes it to `"40%"`.
 - `completion_label` and `sponsor_label` are the two captions that change by engagement type. They default to **Est. Go Live** and **Account Manager**; set them only when a project genuinely uses different words (e.g. `"Est. Completion"`, `"Project Sponsor"`).
 - `account_manager` is the third People-row name. The legacy key `sponsor` is still read, so profiles written before the relabel keep working.
+- `managed_services: true` swaps the four tiles for Monthly Budget, Used This Month, and Remaining. The renderer computes Remaining and the red. `hours_as_of` is required whenever `month_hours_used` is set, and the build fails without it. `est_hours`, `act_hours`, `pct_estimate`, and `completion_short` are ignored in this mode.
 - Omit any hours value you could not read and the tile shows a dash. Omit or empty any content list to drop that whole section. Omit `invoices` to hide that section.
 - `next_checkpoint` renders as one bold line under the action items. Omit it and the line disappears; the action-items block still renders for the checkpoint alone if there are no open items.
 - `action_item_log_url` is optional; when present, it must be an HTTPS URL and renders beneath the Project Summary as **"See more detail here"**. Omit it or use `""` to hide the link.

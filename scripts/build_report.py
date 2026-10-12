@@ -48,6 +48,11 @@ content.json schema (all keys optional unless noted):
   "pct_estimate": "40%",                    # "% of Estimate" tile; a bare number is
                                             # accepted and normalized to "40%"
   "show_hours": true,                       # false -> drop the four stat tiles entirely
+  "managed_services": false,                # true -> three current-month tiles instead:
+  "monthly_budget_hours": "30",             #   Monthly Budget, Used This Month (red when
+  "month_hours_used": "12.5",               #   over budget), Remaining. No rollover.
+  "hours_as_of": "October 9, 2026",         #   date the hours were pulled; required
+                                            #   whenever month_hours_used is given
   "completion_short": "Sep 30",
   "completion_label": "Est. Go Live",       # 4th tile's caption; defaults to "Est. Go Live"
   "pm": "...", "lead_consultant": "...",
@@ -111,6 +116,18 @@ SECTION_ANCHORS = {
     "risks": ("<!-- ===== RISK / MITIGATION ===== -->", "[[INVOICES_BLOCK]]"),
     "_stat_tiles": ("<!-- ===== STAT TILES ===== -->", "<!-- People row -->"),
 }
+
+# Managed services tiles. Same markup as the template's tiles, three across.
+MS_TILE = ('      <td style="width:{w};vertical-align:top;padding:{pad};">\n'
+           '        <table role="presentation" style="width:100%;background-color:{bg};{border}border-collapse:collapse;">\n'
+           '          <tbody><tr><td align="center" style="padding:14px 6px;font-family:\'Segoe UI\',Arial,sans-serif;">\n'
+           '            <div style="font-size:24px;font-weight:700;color:{num};line-height:1;">{value}</div>\n'
+           '            <div style="font-size:10px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;'
+           'color:{cap};padding-top:6px;">{label}</div>\n'
+           '          </td></tr>\n'
+           '        </tbody></table>\n'
+           '      </td>\n')
+OVER_BUDGET_RED = "#C0392B"  # the red already used on the invoices "Please note" line
 
 # CSS the mail pipeline discards. Any two of these in one style attribute and the
 # sanitizer drops the whole attribute, taking the surviving declarations with it.
@@ -424,6 +441,52 @@ def normalize_pct(value):
     return s
 
 
+def hours_number(label, value):
+    s = str(value).strip().replace(",", "")
+    if not re.fullmatch(r"\d+(\.\d+)?", s):
+        sys.exit("ERROR: {} must be a number of hours (got {!r}).".format(label, value))
+    return float(s)
+
+
+def fmt_hours(n):
+    return "{:.2f}".format(n).rstrip("0").rstrip(".")
+
+
+def managed_tiles_html(content):
+    """Managed services stat tiles: the current calendar month only, against a
+    fixed monthly budget. The firm's rollover policy is deliberately ignored."""
+    budget_raw = str(content.get("monthly_budget_hours") or "").strip()
+    used_raw = str(content.get("month_hours_used") or "").strip()
+    budget = hours_number("monthly_budget_hours", budget_raw) if budget_raw else None
+    used = hours_number("month_hours_used", used_raw) if used_raw else None
+    as_of = str(content.get("hours_as_of") or "").strip()
+    if used is not None and not as_of:
+        sys.exit("ERROR: month_hours_used needs hours_as_of, the date the hours were "
+                 "pulled. Time entered late is not counted yet, so the date must show.")
+
+    over = budget is not None and used is not None and used > budget
+    remaining = fmt_hours(max(budget - used, 0)) if budget is not None and used is not None else ""
+    grey = dict(bg="#F6F6F6", border="border:1px solid #E4E7EC;", num="#0E172D", cap="#6C7884")
+    tiles = (
+        MS_TILE.format(w="33%", pad="0 5px 0 0", value=txt(fmt_hours(budget)) if budget is not None else DASH,
+                       label="Monthly Budget", **grey)
+        + MS_TILE.format(w="34%", pad="0 5px", value=txt(fmt_hours(used)) if used is not None else DASH,
+                         label="Used This Month", **dict(grey, num=OVER_BUDGET_RED if over else "#0E172D"))
+        + MS_TILE.format(w="33%", pad="0 0 0 5px", value=txt(remaining) or DASH, label="Remaining",
+                         bg="#0E172D", border="", num="#6EDC82", cap="#AAB6C6")
+    )
+    as_of_line = ""
+    if as_of:
+        as_of_line = ('\n    <div style="padding-top:8px;font-family:Calibri,\'Segoe UI\',Arial,sans-serif;'
+                      'font-size:12px;color:#6C7884;">Hours as of {}</div>'.format(txt(as_of)))
+    return (
+        SECTION_ANCHORS["_stat_tiles"][0] + '\n  <tr>\n  <td style="padding:24px 36px 6px;">\n'
+        '    <table role="presentation" style="width:100%;border-collapse:collapse;">\n'
+        '    <tbody><tr>\n' + tiles + '    </tr>\n    </tbody></table>' + as_of_line
+        + '\n  </td>\n  </tr>\n\n  '
+    )
+
+
 def word_count(value):
     return len(str(value).split())
 
@@ -601,6 +664,10 @@ def main():
             html = drop_between(html, *SECTION_ANCHORS[key])
     if content.get("show_hours") is False:
         html = drop_between(html, *SECTION_ANCHORS["_stat_tiles"])
+    elif content.get("managed_services") is True:
+        at = html.find(SECTION_ANCHORS["_stat_tiles"][0])
+        html = drop_between(html, *SECTION_ANCHORS["_stat_tiles"])
+        html = html[:at] + managed_tiles_html(content) + html[at:]
 
     sig = content.get("signature") or {}
 
