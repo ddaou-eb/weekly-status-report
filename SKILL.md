@@ -1,6 +1,6 @@
 ---
 name: weekly-status-report
-description: 'Generates client-facing WEEKLY STATUS REPORTS as branded HTML email drafts. A one-time setup per client saves a profile (point of contact, internal CC, Power BI project). One weekly scheduled run then covers every configured client at once: it scans that week''s client meetings, reads the meeting recaps, pulls hours from PM Reports in Power BI, and prepares a draft email for the user to review and send. Use when the user says "weekly status report for [client]", "set up a weekly status report", "generate the weekly status for [client]", "send [client] their weekly update", "run the weekly client status", or "run the weekly status for all clients". Do NOT use for per-meeting recaps (use client-meeting-recap), internal-only meeting summaries (use meeting-intel), scheduling meetings (use schedule-meeting), or a personal daily overview (use daily-briefing).'
+description: 'Generates client-facing WEEKLY STATUS REPORTS as branded HTML email drafts. A one-time setup per client saves a profile (point of contact, internal CC, Power BI project). One weekly scheduled run then covers every configured client at once: it scans that week''s client meetings, reads the meeting recaps, scans client email and Teams chats, pulls hours from PM Reports in Power BI, and prepares a draft email for the user to review and send. Use when the user says "weekly status report for [client]", "set up a weekly status report", "generate the weekly status for [client]", "send [client] their weekly update", "run the weekly client status", or "run the weekly status for all clients". Do NOT use for per-meeting recaps (use client-meeting-recap), internal-only meeting summaries (use meeting-intel), scheduling meetings (use schedule-meeting), or a personal daily overview (use daily-briefing).'
 cowork:
   category: communication
   icon: MailTemplate
@@ -51,7 +51,6 @@ Run setup when the user invokes the skill for a client with **no saved profile**
    - **Action-item log link** — *No link* (default) · *Yes, include a link*. If yes, ask the user to paste the log's HTTPS URL; it may be in Smartsheet, Azure DevOps, or another service.
    - **Hours tiles** — *Show Est/Actual/% from PM Reports* (default) · *Leave hours off this client's report*.
    - **Outstanding Invoices** — *Leave it off* (default) · *Include open AR*.
-   - **Scan client email too?** — *No, meetings only* (default) · *Yes, also scan email from this client*.
 
    Resolve every chosen person to a real address (recipients) or full display name (People row) before saving.
 4. **Pin the Power BI project.** Locate the firm's **PM Reports** model once, here at setup, with `SearchM365(sources=["powerbi"])`. Save the model id as `powerbi_report` and the row/project identifier this client's hours live under as `powerbi_project`. **Do not defer this to the weekly run.** If the project genuinely cannot be found, save `show_hours: false` and tell the user the hours tiles will be blank until it is set.
@@ -89,7 +88,6 @@ project_manager: Chris Lee   # the PM named on the report
 account_manager: Pat Ray     # third name on the People row; "" only when the user said there is none
 powerbi_report: rpt_1        # PM Reports model id, pinned at setup
 powerbi_project: ACME-2026   # the project/row this client's hours sit under
-scan_email: false            # also scan email from this client's qualifying domains? meetings-only by default
 # Section/field preferences:
 include_invoices: false      # include the Outstanding Invoices section?
 show_hours: true             # show the four stat tiles?
@@ -135,15 +133,17 @@ On the **batch run**, do step 1 once, then repeat steps 2 through 7 per client. 
 
    A recap's suggested follow-up tasks are written by Teams, not said by the people on the call. Treat them as candidates and apply the **Evidence Bar** before keeping any of them.
 
-5. **Client email, only if the profile opts in.** When `scan_email: true`, call `ListMessages` once on the Inbox for mail from the client's qualifying domains, and once on Sent Items for mail the user sent to them, both for the week. Sent mail matters: it is often where an item was already delivered. Do not also call `SearchM365` for the same thing. When `scan_email: false`, skip this entirely.
+5. **Client email and Teams chats, always.** Every run scans both, for every client, with no setup question and no profile switch. A legacy `scan_email` key in an older profile is ignored.
+   - **Email:** call `ListMessages` once on the Inbox for mail from the client's qualifying domains, and once on Sent Items for mail the user sent to them, both for the week. Sent mail matters: it is often where an item was already delivered. Do not also call `SearchM365` for the same thing.
+   - **Teams chats:** one pass over the user's Teams chat messages for the week, keeping only chats where at least one participant is on a qualifying domain. Use the Teams chat tools available in Cowork. A chat with no participant on a qualifying domain is never used.
 
 6. **Pull project hours.** Read this client's **Estimated Hours**, **Actual / Billable Hours**, **% of Estimate**, and estimated completion date directly from the `powerbi_report` and `powerbi_project` saved on the profile. This is a direct read, not a search: the discovery happened at setup.
 
    If the profile has no `powerbi_report` yet (an older profile, or setup could not find it), do the discovery **once** with `SearchM365(sources=["powerbi"])`, then **write both ids back to the profile** so no later run repeats the search. If the read fails or the project is missing, **leave those fields blank** rather than guessing. Never fabricate hours.
 
 7. **Extract, build, and draft.**
-   - If there are no qualifying client meetings, set the Project Summary to **"No client meetings were held this week."** Do not skip the report. Still use any enabled email scan and the available hours, invoices, risks, and action-item log link; do not imply those facts came from a meeting.
-   - Otherwise, read the week's meetings and email **oldest to newest** and extract progress, decisions, and action items, applying the **Evidence Bar**, the **Client-Safety Rules**, and the **Brevity and Plain Language** caps below. Consolidate topics that repeat across meetings. Next steps belong in the action items, each with a named owner; the single forward-looking date goes in `next_checkpoint`.
+   - If there are no qualifying client meetings, set the Project Summary to **"No client meetings were held this week."** Do not skip the report. Still use the email and chat scans and the available hours, invoices, risks, and action-item log link; do not imply those facts came from a meeting.
+   - Otherwise, read the week's meetings, email, and Teams chats **oldest to newest** and extract progress, decisions, and action items, applying the **Evidence Bar**, the **Client-Safety Rules**, and the **Brevity and Plain Language** caps below. Consolidate topics that repeat across meetings. Next steps belong in the action items, each with a named owner; the single forward-looking date goes in `next_checkpoint`.
    - When `action_item_log_url` is set, include **"See more detail here"** linked to that URL beneath the Project Summary. Never invent or search for a log URL.
    - Fill the People row from the profile's `lead_consultant`, `project_manager`, and `account_manager`. If any of the three is missing, **ask once** (`AskUserQuestion`) and write the answer back to the profile before drafting. Never invent a name here.
    - Write the facts to a content JSON (schema in *Branding & Formatting*) and run `python scripts/build_report.py <content.json> working/<client-slug>.html`. Do **not** hand-write or restyle the HTML.
@@ -330,5 +330,5 @@ Scheduled runs are safe unattended because the skill only ever drafts.
 - **Resolve recipients** with people tools. If a name has multiple matches, confirm before saving.
 - **The NetSuite record address is a machine dropbox, not a person.** BCC it (CC only if a BCC cannot be set), never put it on the To: line, and never look it up with people tools. Copy it verbatim from the project record — a mistyped address silently files nothing.
 - **Confirm, don't infer.** Every field that reaches the report — recipients, CC, and the People row — is confirmed with the user at setup. If a value is missing or uncertain at run time, ask once and write it back to the profile rather than guessing or shipping a blank.
-- **Retrieve once.** One calendar pull per run, one source per meeting, one Inbox and one Sent Items query when email is enabled. Retrieval is what this costs to run.
+- **Retrieve once.** One calendar pull per run, one source per meeting, one Inbox query, one Sent Items query, and one Teams chat pass. Retrieval is what this costs to run.
 - **Portable.** Keep settings in `clients/`, and keep the skill free of personal data and of references to other skills, so it can be deployed across the team.
