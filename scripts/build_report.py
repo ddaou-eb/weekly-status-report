@@ -571,6 +571,67 @@ def enforce_brevity(content):
                  + "\n  - ".join(problems))
 
 
+FIRST_SECOND_PERSON = {
+    "we", "our", "ours", "ourselves", "us", "you", "your", "yours", "yourself",
+    "yourselves", "me", "my", "myself",
+}
+# "Phase I" is a roman numeral, not the pronoun.
+ROMAN_NUMERAL_LEAD = {"phase", "part", "step", "stage", "tier", "level", "wave", "group",
+                      "type", "class", "module", "section", "sprint", "release"}
+
+
+def person_words(text):
+    """First and second person words in a string, in order of appearance."""
+    found = []
+    words = re.findall(r"[A-Za-z]+(?:'[A-Za-z]+)?", str(text))
+    for i, w in enumerate(words):
+        base = w.split("'")[0]
+        if len(base) > 1 and base.isupper():  # US, ME
+            continue
+        if base.lower() in FIRST_SECOND_PERSON:
+            found.append(w)
+        elif base == "I" and not (i and words[i - 1].lower() in ROMAN_NUMERAL_LEAD):
+            found.append(w)
+    return found
+
+
+def enforce_voice(content):
+    """Fail the build when the copy speaks as "we" or to "you".
+
+    The report is written in the third person. An error, not a warning, because
+    the drafting model drifts back to "we" and a warning is never read.
+    """
+    fields = []
+    if content.get("summary"):
+        fields.append(("summary", content["summary"]))
+    for key in ("work_completed", "decisions"):
+        for i, b in enumerate(content.get(key) or [], 1):
+            fields.append(("{}[{}]".format(key, i), b))
+    for i, a in enumerate(content.get("action_items") or [], 1):
+        fields.append(("action_items[{}]".format(i), a.get("text", "")))
+    for i, r in enumerate(content.get("risks") or [], 1):
+        if isinstance(r, str):
+            fields.append(("risks[{}]".format(i), r))
+        else:
+            fields.append(("risks[{}].risk".format(i), r.get("risk", "")))
+            fields.append(("risks[{}].mitigation".format(i), r.get("mitigation", "")))
+    if content.get("next_checkpoint"):
+        fields.append(("next_checkpoint", content["next_checkpoint"]))
+
+    problems = []
+    for label, value in fields:
+        words = person_words(value)
+        if words:
+            problems.append('{} uses "{}": "{}"'.format(
+                label, ", ".join(sorted(set(words), key=str.lower)),
+                " ".join(str(value).split()[:8]) + "..."))
+    if problems:
+        sys.exit("ERROR: write in the third person. Name the people or the team, "
+                 "or use the passive (\"A production order demonstration was "
+                 "completed.\"). Never \"we\" or \"you\":\n  - "
+                 + "\n  - ".join(problems))
+
+
 def plain_language_warnings(content):
     """Warn on copy the client will not parse. Never blocks the build.
 
@@ -644,6 +705,7 @@ def main():
 
     fold_next_steps(content)
     enforce_brevity(content)
+    enforce_voice(content)
     plain_language_warnings(content)
 
     html = TEMPLATE.read_text(encoding="utf-8")

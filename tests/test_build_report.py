@@ -110,5 +110,38 @@ class ManagedServicesTiles(unittest.TestCase):
         self.assertNotIn("Monthly Budget", html)
 
 
+class ThirdPersonVoice(unittest.TestCase):
+    BASE = {"client": "Acme", "report_date": "October 9, 2026",
+            "signature": {"name": "Dana Reed", "firm": "Eide Bailly"}}
+
+    def test_first_person_fails_build(self):
+        proc, _ = render(dict(self.BASE, work_completed=["We completed a production order demonstration."]))
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("third person", proc.stderr)
+        self.assertIn("work_completed[1]", proc.stderr)
+
+    def test_second_person_fails_build(self):
+        proc, _ = render(dict(self.BASE, summary="Please review your open items."))
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("summary", proc.stderr)
+
+    def test_contraction_and_checkpoint_fail_build(self):
+        proc, _ = render(dict(self.BASE, next_checkpoint="We'll meet Wednesday"))
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("next_checkpoint", proc.stderr)
+
+    def test_third_person_passes(self):
+        proc, html = render(dict(
+            self.BASE,
+            work_completed=["A production order demonstration was completed."],
+            action_items=[{"text": "Jake will send the item master template", "owner": "Jake"}]))
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("A production order demonstration was completed.", html)
+
+    def test_us_abbreviation_and_phase_numeral_pass(self):
+        proc, _ = render(dict(self.BASE, summary="US sales tax setup finished for Phase I."))
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -10,7 +10,7 @@
   "pm": "Chris Lee",
   "lead_consultant": "Dana Reed",
   "account_manager": "Pat Ray",
-  "summary": "Testing wrapped up on purchasing & receiving. Next week we move to the <finance> walkthrough.",
+  "summary": "Testing wrapped up on purchasing & receiving. Next week the project moves to the <finance> walkthrough.",
   "action_item_log_url": "https://example.com/log",
   "work_completed": ["Purchasing setup finished and signed off", "Vendor list loaded"],
   "decisions": ["Use the standard approval workflow"],

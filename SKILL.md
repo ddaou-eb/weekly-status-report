@@ -202,6 +202,8 @@ The reader is a controller or an owner, not a consultant, and is reading between
 
 When a build fails on these, **cut and tighten the copy — never raise a cap.** Write to the cap from the start rather than drafting long and letting the renderer reject it. The detail you drop is not lost: it lives in the working email threads, which is where a client goes looking for it.
 
+**Third person, past tense** for finished work. See *Voice*.
+
 **Lead every bullet with the outcome, not the mechanism.** Write *"Check migration fixed — 58 checks move to the correct account this week"*, not *"Diagnosed the migrated check import: 58 checks were posted against the main account rather than the sweep account, and because Business Central will not reverse an entry tied to a check ledger entry…"*. Same fact, a quarter of the words, and the reader has the point by the fourth one.
 
 **Write so a non-technical reader gets it first time.** No part, lot, or heat identifiers; no internal system or entity names; no figures carried to the penny — round them (*about $212K*, not *$212,433.09*). The renderer prints `STYLE:` warnings when it spots these. Those are warnings, not errors, because the odd identifier is genuinely necessary and a false positive must never block a client draft — read them and tighten the copy.
@@ -316,7 +318,16 @@ An email hand-composed in Outlook can carry the mark as a `cid:` inline attachme
 
 ## Voice
 
-Write as the **sender** (resolve their name with `GetMyDetails` for the sign-off). Professional, warm, concise, collaborative. Use "we" and "you", plain language, short sentences. No jargon, no buzzwords, no hype. The client is the focus.
+Write as the **sender** (resolve their name with `GetMyDetails` for the sign-off). Professional, concise, plain language, short sentences. No jargon, no buzzwords, no hype. The client is the focus.
+
+**Third person only. Never "we", "our", "us", "I", "my", "you", or "your"** anywhere in the report copy: summary, work completed, decisions, action items, risks, and the checkpoint line. Refer to people by name or role ("the AmTex team", "Jake", "Eide Bailly"). `build_report.py` fails the build on any of these words.
+
+**Past tense for anything that happened.** Work completed and decisions describe finished events. Lead with the thing that was done and use the passive, or name the actor:
+- Not *"We completed a production order demonstration."* Write *"A production order demonstration was completed."*
+- Not *"We decided to go with the UI."* Write *"The team agreed to proceed with the UI."*
+- Not *"Next week we move to the finance walkthrough."* Write *"The finance walkthrough is scheduled for next week."*
+
+Open action items and the next checkpoint look forward, so they stay in future tense with a named owner, still in third person: *"Jake will send the item master template."*
 
 ---
 
