@@ -56,8 +56,11 @@ Run setup when the user invokes the skill for a client with **no saved profile**
    Resolve every chosen person to a real address (recipients) or full display name (People row) before saving.
 4. **Pin the Power BI project.** Locate the firm's **PM Reports** model once, here at setup, with `SearchM365(sources=["powerbi"])`. Save the model id as `powerbi_report` and the row/project identifier this client's hours live under as `powerbi_project`. `powerbi_project` names **one project**, never the whole client: a client can have several projects, and the hours read must not mix them. When the engagement is managed services, put the candidate project in front of the user and confirm it is the managed services project before saving. **Do not defer this to the weekly run.** If the project genuinely cannot be found, save `show_hours: false` and tell the user the hours tiles will be blank until it is set.
 5. **Save the profile** to `clients/<client-slug>.md` (format below).
-6. **Make sure the weekly task exists.** Call `GetScheduledPrompts`. If the batch task is already there, say so and change nothing. If not, create it (see *Scheduling*). One task total, for all clients.
-7. **Confirm in plain language**: *"All set. Acme joins the Friday 9 AM run, and I'll have a draft waiting for your review, copying [CC team] and BCC'ing the NetSuite project record. You can also ask for it anytime with 'weekly status for Acme'."* Leave the NetSuite clause out when no record address was saved.
+6. **Make sure the weekly task exists.** Decide from the `clients/` folder, not from `GetScheduledPrompts` alone: that call may only show this session's tasks, so an empty result does not prove the task is missing. One task total, for all clients.
+   - **`clients/_schedule.md` exists** → the task is already set up. Change nothing.
+   - **No marker, and the profile just saved is the only client profile** → this is the user's first setup, so no weekly task can exist yet. Create it now (see *Scheduling*) and write the marker. Do not ask first, and do not skip it because existing schedules are not visible.
+   - **No marker, but other client profiles exist** → these clients were set up before the marker existed. Call `GetScheduledPrompts`; if the batch task appears, write the marker and change nothing. If it does not, ask once: *"Do you already have the Friday weekly status run in Cowork's scheduled tasks?"* Yes → write the marker. No → create the task and write the marker.
+7. **Confirm in plain language**: *"All set. Acme joins the Friday 9 AM run, and I'll have a draft waiting for your review, copying [CC team] and BCC'ing the NetSuite project record. You can also ask for it anytime with 'weekly status for Acme'."* Leave the NetSuite clause out when no record address was saved. When step 6 created the task, add: *"I also created the weekly Friday 9 AM run, which drafts a report for every client you set up."*
 
 After setup, a report needs only the client name, or nothing at all on the batch run.
 
@@ -66,6 +69,8 @@ After setup, a report needs only the client name, or nothing at all on the batch
 ## Client Profiles
 
 One file per client in this skill's `clients/` subfolder, so settings persist between runs. The folder is the skill's settings store and **ships empty**: profiles are each user's own and are not shared when the skill is. A teammate who installs this skill gets a blank `clients/` folder and runs their own setup.
+
+**What counts as a client profile:** every `.md` file in `clients/` except `README.md` and any file whose name starts with `_`. The batch run, and the "only client profile" check in setup step 6, use this definition. `clients/_schedule.md` is the scheduling marker, not a client (see *Scheduling*).
 
 ```markdown
 ---
@@ -333,12 +338,20 @@ Open action items and the next checkpoint look forward, so they stay in future t
 
 ## Scheduling
 
-**One task, not one per client.** Create it with `SetupScheduledPrompt` the first time any client is configured, weekly on **Friday at 9:00 AM** local unless the user asks for another time.
+**One task, not one per client.** Create it with `SetupScheduledPrompt` the first time any client is configured, weekly on **Friday at 9:00 AM** local unless the user asks for another time. Setup step 6 decides whether to create it; follow that rule rather than stopping to ask on a first setup.
 
 - Make the task description self-contained: it should say to run the weekly status report for **every client with a saved profile**, per this skill, preparing a draft for each.
 - Do not name clients in the schedule. The run reads them from the `clients/` folder, so adding a client never means touching the task.
-- Before creating one, call `GetScheduledPrompts` and check it does not already exist. Two batch tasks would produce two sets of drafts.
-- To change or pause it, `GetScheduledPrompts` then `EditScheduledPrompt`.
+- **Write the marker every time the task is created or confirmed.** Save `clients/_schedule.md` with the schedule, so later setups know the task exists even when `GetScheduledPrompts` cannot see it. Two batch tasks would produce two sets of drafts, and the marker is what prevents that.
+
+  ```markdown
+  ---
+  weekly_task: Friday 9:00 AM
+  recorded: 2026-10-20
+  ---
+  The weekly status report scheduled task exists. Delete this file if the task is deleted.
+  ```
+- To change or pause it, `GetScheduledPrompts` then `EditScheduledPrompt`, and update `weekly_task` in the marker. If the user deletes the task, delete the marker too, so the next setup recreates it.
 
 Scheduled runs are safe unattended because the skill only ever drafts.
 

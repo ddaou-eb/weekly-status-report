@@ -9,7 +9,9 @@ profiles stay in your own copy, and a teammate who installs this skill starts wi
 and runs their own setup.
 
 There is **one** weekly scheduled run that covers every client with a profile in this folder.
-Adding a client means adding a profile here, not adding another scheduled task.
+Adding a client means adding a profile here, not adding another scheduled task. The skill creates
+that run automatically on your first setup and leaves a `_schedule.md` file here as a record that it
+exists. Files starting with `_` are not client profiles.
 
 You don't need to edit these by hand. To change a client's settings, run the skill and say
 "reconfigure the weekly status for [client]".
