@@ -1,0 +1,4 @@
+# Client profiles hold real client contact details. Each teammate builds their own through the skill's setup.
+clients/*.md
+!clients/README.md
+__pycache__/
