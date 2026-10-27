@@ -122,7 +122,7 @@ A profile with no `managed_services` key is a standard project: do not ask about
 
 On the **batch run**, do step 1 once, then repeat steps 2 through 7 per client. On an **on-demand run**, do all of it for the one named client.
 
-1. **Pull the week once.** Determine the window: the most recent **Monday through Friday** in the user's local time zone, or the current Mon–Fri for a scheduled Friday run. Call `ListCalendarView` **one time** for that window (`select` subject, start, end, organizer, attendees, isOnlineMeeting, onlineMeeting, isCancelled, showAs). Every client is filtered out of this one result.
+1. **Pull the week once.** Determine the window in the user's local time zone. The report looks back at a **completed Monday through Friday**: on Friday, Saturday, or Sunday, that is the current Mon–Fri (this includes the scheduled Friday run); on Monday through Thursday, it is the **previous** Mon–Fri, never the week still in progress. If the user names a week or asks for "this week", use that instead. Call `ListCalendarView` **one time** for that window (`select` subject, start, end, organizer, attendees, isOnlineMeeting, onlineMeeting, isCancelled, showAs). Every client is filtered out of this one result.
 
 2. **Load the client's profile.** If none exists, run *First-Run Setup* instead.
 
@@ -154,7 +154,7 @@ On the **batch run**, do step 1 once, then repeat steps 2 through 7 per client. 
    If the profile has no `powerbi_report` yet (an older profile, or setup could not find it), do the discovery **once** with `SearchM365(sources=["powerbi"])`, then **write both ids back to the profile** so no later run repeats the search. If the read fails or the project is missing, **leave those fields blank** rather than guessing. Never fabricate hours.
 
 7. **Extract, build, and draft.**
-   - If there are no qualifying client meetings, set the Project Summary to **"No client meetings were held this week."** Do not skip the report. Still use the email and chat scans and the available hours, invoices, risks, and action-item log link; do not imply those facts came from a meeting.
+   - If there are no qualifying client meetings, set the Project Summary to **"No client meetings were held during the reporting week."** Do not skip the report. Still use the email and chat scans and the available hours, invoices, risks, and action-item log link; do not imply those facts came from a meeting.
    - Otherwise, read the week's meetings, email, and Teams chats **oldest to newest** and extract progress, decisions, and action items, applying the **Evidence Bar**, the **Client-Safety Rules**, and the **Brevity and Plain Language** caps below. Consolidate topics that repeat across meetings. Next steps belong in the action items, each with a named owner; the single forward-looking date goes in `next_checkpoint`.
    - When `action_item_log_url` is set, include **"See more detail here"** linked to that URL beneath the Project Summary. Never invent or search for a log URL.
    - Fill the People row from the profile's `lead_consultant`, `project_manager`, and `account_manager`. If any of the three is missing, **ask once** (`AskUserQuestion`) and write the answer back to the profile before drafting. Never invent a name here.
