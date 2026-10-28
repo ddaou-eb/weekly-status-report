@@ -2,8 +2,8 @@
 
     python -m unittest discover -s initiatives/status-report-automation/cowork-skill-v3/tests -v
 
-Golden files were rendered by the renderer before managed services was added, so
-the golden tests prove non-managed reports are unchanged. All data is made up.
+Golden files pin the rendered HTML for the fixture reports, so any change to the
+template or renderer shows up as a reviewed diff. All data is made up.
 """
 import json
 import pathlib
@@ -95,13 +95,20 @@ class ManagedServicesTiles(unittest.TestCase):
         self.assertNotEqual(proc.returncode, 0)
         self.assertIn("hours_as_of", proc.stderr)
 
-    def test_unread_hours_show_dashes(self):
+    def test_unread_hours_without_error_flag_fails_build(self):
         content = dict(MANAGED)
+        del content["hours_as_of"]
+        proc, _ = render(content)
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("hours_error", proc.stderr)
+
+    def test_unread_hours_with_error_flag_show_notice(self):
+        content = dict(MANAGED, hours_error=True)
         del content["hours_as_of"]
         proc, html = render(content)
         self.assertEqual(proc.returncode, 0, proc.stderr)
-        self.assertIn("Used This Month", html)
-        self.assertIn("&mdash;", html)
+        self.assertIn("Power BI connection encountered an error", html)
+        self.assertNotIn("Monthly Budget", html)
         self.assertNotIn("Hours as of", html)
 
     def test_show_hours_false_still_drops_tiles(self):
@@ -111,7 +118,7 @@ class ManagedServicesTiles(unittest.TestCase):
 
 
 class ThirdPersonVoice(unittest.TestCase):
-    BASE = {"client": "Acme", "report_date": "October 9, 2026",
+    BASE = {"client": "Acme", "report_date": "October 9, 2026", "show_hours": False,
             "signature": {"name": "Dana Reed", "firm": "Eide Bailly"}}
 
     def test_first_person_fails_build(self):
@@ -141,6 +148,84 @@ class ThirdPersonVoice(unittest.TestCase):
     def test_us_abbreviation_and_phase_numeral_pass(self):
         proc, _ = render(dict(self.BASE, summary="US sales tax setup finished for Phase I."))
         self.assertEqual(proc.returncode, 0, proc.stderr)
+
+
+STANDARD = {"client": "Acme", "report_date": "October 9, 2026", "show_hours": True,
+            "est_hours": "120", "act_hours": "47.5", "pct_estimate": "40", "completion_short": "Dec 1",
+            "summary": "Testing continued.", "signature": {"name": "Dana Reed", "firm": "Eide Bailly"}}
+HOURS_KEYS = ("est_hours", "act_hours", "pct_estimate", "completion_short")
+LOG_URL = "https://example.com/log"
+
+
+def section(html, start):
+    """From a section's marker up to the next section marker that survived rendering."""
+    at = html.index(start)
+    nxt = html.find("<!-- =====", at + len(start))
+    return html[at:nxt if nxt != -1 else len(html)]
+
+
+class ActionItemLogLink(unittest.TestCase):
+    def test_link_sits_under_action_items_not_summary(self):
+        proc, html = render(dict(STANDARD, action_item_log_url=LOG_URL,
+                                 action_items=[{"text": "Jake will send the template", "owner": "Jake"}]))
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("See the full action item log here", html)
+        self.assertNotIn("See more detail here", html)
+        items = section(html, "SECTION: Open Action Items")
+        self.assertIn(LOG_URL, items)
+        summary = section(html, "PROJECT SUMMARY")
+        self.assertNotIn(LOG_URL, summary)
+
+    def test_link_alone_keeps_the_action_items_section(self):
+        proc, html = render(dict(STANDARD, action_item_log_url=LOG_URL))
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("Open Action Items", html)
+        self.assertIn(LOG_URL, html)
+
+    def test_no_link_no_items_drops_the_section(self):
+        proc, html = render(dict(STANDARD))
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertNotIn("Open Action Items", html)
+
+
+class PowerBIFailsafe(unittest.TestCase):
+    def test_all_hours_blank_fails_build(self):
+        content = {k: v for k, v in STANDARD.items() if k not in HOURS_KEYS}
+        proc, _ = render(content)
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("hours_error", proc.stderr)
+        self.assertIn("Never set show_hours to false", proc.stderr)
+
+    def test_show_hours_absent_is_treated_as_on(self):
+        content = {k: v for k, v in STANDARD.items() if k not in HOURS_KEYS + ("show_hours",)}
+        proc, _ = render(content)
+        self.assertNotEqual(proc.returncode, 0)
+
+    def test_partial_hours_still_render_with_dashes(self):
+        content = dict(STANDARD)
+        del content["completion_short"]
+        proc, html = render(content)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn(">120</div>", html)
+        self.assertIn("&mdash;", html)
+
+    def test_hours_error_replaces_tiles_with_notice(self):
+        content = {k: v for k, v in STANDARD.items() if k not in HOURS_KEYS}
+        proc, html = render(dict(content, hours_error=True))
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("Remove before sending: Power BI connection error", html)
+        self.assertIn("run the report again in Cowork", html)
+        for gone in ("Est. Hours", "Actual Hours", "of Estimate"):
+            self.assertNotIn(gone, html)
+        self.assertIn("Lead Consultant", html)
+        self.assertIn("WARNING", proc.stdout)
+
+    def test_show_hours_false_ignores_error_flag(self):
+        content = {k: v for k, v in STANDARD.items() if k not in HOURS_KEYS}
+        proc, html = render(dict(content, show_hours=False, hours_error=True))
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertNotIn("Power BI connection", html)
+        self.assertNotIn("WARNING", proc.stdout)
 
 
 if __name__ == "__main__":

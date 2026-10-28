@@ -45,7 +45,7 @@ Run setup when the user invokes the skill for a client with **no saved profile**
    - **Point of contact** — the client recipients, all on the To: line. `multiSelect`; several client contacts is normal.
    - **Internal CC team** — who to copy. `multiSelect`.
    - **NetSuite project record filing email** — ask: *"What is the NetSuite project's email address for filing the report? This is an email address, not the project or record number."* It is the record's email dropbox, which files the sent report to that project record. It looks like `messages.0000000.00000000.0000000000@0000000.email.netsuite.com`. Pass `options: []` and have the user paste it from the NetSuite project record; never construct, correct, or infer one, and never resolve it with people tools. An empty answer means this project has no record email — save `""` so no later run asks again.
-   - **Engagement lead / Lead Consultant** — the name that appears on the report's People row.
+   - **Lead Consultant** — ask *"Who is the lead consultant?"* The name that appears on the report's People row.
    - **Project Manager** — the PM on the People row.
    - **Account Manager** — the third name on the People row. Offer a single "this engagement has no standing account manager" choice so the user can decline it explicitly rather than it being quietly blank.
    - **Action-item log link** — *No link* (default) · *Yes, include a link*. If yes, ask the user to paste the log's HTTPS URL; it may be in Smartsheet, Azure DevOps, or another service.
@@ -54,7 +54,7 @@ Run setup when the user invokes the skill for a client with **no saved profile**
    - **Outstanding Invoices** — *Leave it off* (default) · *Include open AR*.
 
    Resolve every chosen person to a real address (recipients) or full display name (People row) before saving.
-4. **Pin the Power BI project.** Locate the firm's **PM Reports** model once, here at setup, with `SearchM365(sources=["powerbi"])`. Save the model id as `powerbi_report` and the row/project identifier this client's hours live under as `powerbi_project`. `powerbi_project` names **one project**, never the whole client: a client can have several projects, and the hours read must not mix them. When the engagement is managed services, put the candidate project in front of the user and confirm it is the managed services project before saving. **Do not defer this to the weekly run.** If the project genuinely cannot be found, save `show_hours: false` and tell the user the hours tiles will be blank until it is set.
+4. **Pin the Power BI project.** Locate the firm's **PM Reports** model once, here at setup, with `SearchM365(sources=["powerbi"])`. Save the model id as `powerbi_report` and the row/project identifier this client's hours live under as `powerbi_project`. `powerbi_project` names **one project**, never the whole client: a client can have several projects, and the hours read must not mix them. When the engagement is managed services, put the candidate project in front of the user and confirm it is the managed services project before saving. **Do not defer this to the weekly run.** The Power BI connection is intermittent, so a failed or empty lookup is retried exactly as in *Pull project hours* (Generating a Report, step 6) before you conclude anything. If the project still cannot be found, tell the user and ask: *Try again now* (default) · *Save without the Power BI project for now* (the weekly run will look it up and write it back) · *Leave hours off this client's report*. Save `show_hours: false` **only** when the user picks that last option; never because a lookup failed.
 5. **Save the profile** to `clients/<client-slug>.md` (format below).
 6. **Make sure the weekly task exists.** Decide from the `clients/` folder, not from `GetScheduledPrompts` alone: that call may only show this session's tasks, so an empty result does not prove the task is missing. One task total, for all clients.
    - **`clients/_schedule.md` exists** → the task is already set up. Change nothing.
@@ -87,16 +87,16 @@ internal_cc:
 # every draft so the sent report files itself to the project record. "" only when
 # the user said this project has no record email:
 netsuite_record_email: messages.0000000.00000000.0000000000@0000000.email.netsuite.com
-action_item_log_url: ""    # optional HTTPS URL; shown as "See more detail here"
+action_item_log_url: ""    # optional HTTPS URL; shown under Open Action Items as "See the full action item log here"
 # People row - all three are confirmed at setup, never inferred at run time:
-lead_consultant: Dana Reed   # the engagement lead named on the report
+lead_consultant: Dana Reed   # the lead consultant named on the report
 project_manager: Chris Lee   # the PM named on the report
 account_manager: Pat Ray     # third name on the People row; "" only when the user said there is none
 powerbi_report: rpt_1        # PM Reports model id, pinned at setup
 powerbi_project: ACME-2026   # the ONE project this report's hours are read for, never the whole client
 # Section/field preferences:
 include_invoices: false      # include the Outstanding Invoices section?
-show_hours: true             # show the stat tiles?
+show_hours: true             # show the stat tiles? Changed only when the user asks; never by a run
 managed_services: false      # true = three current-month tiles against monthly_budget_hours
 monthly_budget_hours: 30     # only when managed_services is true; fixed per client, no rollover
 logo_url: ""                 # optional https-hosted logo; "" = built-in wordmark. NEVER a data: URI
@@ -107,6 +107,8 @@ Optional notes about this engagement.
 **Qualifying domains.** `domain` plus every entry in the optional `additional_domains` list are this client's **qualifying domains**, and they are what meetings and email are filtered on. Add `additional_domains` when people outside the client's own domain genuinely belong to the engagement, such as the client's outside advisors or accountants, or a second company domain. Only the user adds it: setup does not ask, and you never infer one. A profile with no `additional_domains` key qualifies on `domain` alone, which is the normal case.
 
 If a setting needs to change, the user says so and you edit the profile. Do not try to infer preferences from previously sent mail.
+
+**A run never rewrites a preference.** The only profile writes a run may make are the ask-once answers described below and the one-time Power BI discovery in *Pull project hours*. A failed read, an empty result, or a missing value is never a reason to change `show_hours`, `managed_services`, `include_invoices`, or the saved Power BI ids.
 
 A profile saved before the People row was confirmed at setup may be missing `lead_consultant`, `project_manager`, or `account_manager`. When a run finds one missing, **ask for it once and write the answer back** — never render the report with an invented name or a silent blank where a person belongs. Older profiles spell the third name `sponsor`; the renderer still accepts that key, so rename it on the next edit rather than re-asking the user for a name they already gave.
 
@@ -122,7 +124,7 @@ A profile with no `managed_services` key is a standard project: do not ask about
 
 On the **batch run**, do step 1 once, then repeat steps 2 through 7 per client. On an **on-demand run**, do all of it for the one named client.
 
-1. **Pull the week once.** Determine the window in the user's local time zone. The report looks back at a **completed Monday through Friday**: on Friday, Saturday, or Sunday, that is the current Mon–Fri (this includes the scheduled Friday run); on Monday through Thursday, it is the **previous** Mon–Fri, never the week still in progress. If the user names a week or asks for "this week", use that instead. Call `ListCalendarView` **one time** for that window (`select` subject, start, end, organizer, attendees, isOnlineMeeting, onlineMeeting, isCancelled, showAs). Every client is filtered out of this one result.
+1. **Pull the week once.** The reporting window is the **7 days ending when the run starts**, in the user's local time zone: from this time one week ago up to now. Do not snap it to a calendar week or to Monday through Friday. A Wednesday run covers last Wednesday through this Wednesday morning, so it includes Monday's and Tuesday's meetings. The scheduled Friday 9 AM run covers last Friday 9 AM through this Friday 9 AM, so back-to-back weekly runs neither overlap nor leave a gap. If the user names a specific week or date range, use that instead. Call `ListCalendarView` **one time** for that window (`select` subject, start, end, organizer, attendees, isOnlineMeeting, onlineMeeting, isCancelled, showAs). Every client is filtered out of this one result, and the email and Teams scans in step 5 use the same window.
 
 2. **Load the client's profile.** If none exists, run *First-Run Setup* instead.
 
@@ -144,19 +146,26 @@ On the **batch run**, do step 1 once, then repeat steps 2 through 7 per client. 
    A recap's suggested follow-up tasks are written by Teams, not said by the people on the call. Treat them as candidates and apply the **Evidence Bar** before keeping any of them.
 
 5. **Client email and Teams chats, always.** Every run scans both, for every client, with no setup question and no profile switch. A legacy `scan_email` key in an older profile is ignored.
-   - **Email:** call `ListMessages` once on the Inbox for mail from the client's qualifying domains, and once on Sent Items for mail the user sent to them, both for the week. Sent mail matters: it is often where an item was already delivered. Do not also call `SearchM365` for the same thing.
-   - **Teams chats:** one pass over the user's Teams chat messages for the week, keeping only chats where at least one participant is on a qualifying domain. Use the Teams chat tools available in Cowork. A chat with no participant on a qualifying domain is never used.
+   - **Email:** call `ListMessages` once on the Inbox for mail from the client's qualifying domains, and once on Sent Items for mail the user sent to them, both for the reporting window. Sent mail matters: it is often where an item was already delivered. Do not also call `SearchM365` for the same thing.
+   - **Teams chats:** one pass over the user's Teams chat messages for the reporting window, keeping only chats where at least one participant is on a qualifying domain. Use the Teams chat tools available in Cowork. A chat with no participant on a qualifying domain is never used.
 
 6. **Pull project hours.** Read this client's **Estimated Hours**, **Actual / Billable Hours**, **% of Estimate**, and estimated completion date directly from the `powerbi_report` and `powerbi_project` saved on the profile. This is a direct read, not a search: the discovery happened at setup.
 
    **Managed services (`managed_services: true`):** read **month-to-date hours for the `powerbi_project` project only**, from the 1st of the current calendar month through today. Do not read Estimated Hours, % of Estimate, or the completion date, and do not add other projects for the same client. Note today's date as `hours_as_of`: time entered late is not counted yet, so the report shows when the hours were pulled. Pass `monthly_budget_hours` from the profile as is. No rollover from earlier months, and no month-end projection.
 
-   If the profile has no `powerbi_report` yet (an older profile, or setup could not find it), do the discovery **once** with `SearchM365(sources=["powerbi"])`, then **write both ids back to the profile** so no later run repeats the search. If the read fails or the project is missing, **leave those fields blank** rather than guessing. Never fabricate hours.
+   If the profile has no `powerbi_report` yet (an older profile, or setup could not find it), do the discovery **once** with `SearchM365(sources=["powerbi"])`, then **write both ids back to the profile** so no later run repeats the search. Never fabricate hours.
+
+   **If the read fails, retry. Never drop the tiles.** The Fabric connection behind Power BI is intermittent, and trying again usually works. Treat an error, a timeout, an empty result, or a result without this project's row as a **failed read**, never as "this project has no hours".
+   - **Round 1:** retry the same read, up to 3 attempts in a row.
+   - **Round 2, later:** if all three fail, refresh the connection by re-locating PM Reports with `SearchM365(sources=["powerbi"])`, without overwriting the saved ids. Set this client's hours aside and carry on: on a batch run, finish the other clients first; on demand, finish the extraction in step 7 first. Then make up to 3 more attempts just before rendering. The pause in between is what usually clears it.
+   - **Still failing:** render with `"hours_error": true` and no hours values. The renderer swaps the tiles for a highlighted notice telling the user that the Power BI connection encountered an error, and to either delete the notice and send the report without hours, or run the report again in Cowork. Keep `show_hours` exactly as the profile has it.
+   - **Never** set `show_hours: false`, in the content JSON or on the profile, because a read failed, and never fill a tile with a guessed or remembered number. The renderer fails the build when the tiles are on, every hours value is blank, and `hours_error` is not set, so a silent blank cannot ship.
+   - If the refresh in round 2 cannot find the saved `powerbi_report` at all (the model may have been renamed or moved), keep the saved ids, use `hours_error`, and tell the user in the closing message to say *"reconfigure [client]"* so the project can be re-pinned.
 
 7. **Extract, build, and draft.**
    - If there are no qualifying client meetings, set the Project Summary to **"No client meetings were held during the reporting week."** Do not skip the report. Still use the email and chat scans and the available hours, invoices, risks, and action-item log link; do not imply those facts came from a meeting.
    - Otherwise, read the week's meetings, email, and Teams chats **oldest to newest** and extract progress, decisions, and action items, applying the **Evidence Bar**, the **Client-Safety Rules**, and the **Brevity and Plain Language** caps below. Consolidate topics that repeat across meetings. Next steps belong in the action items, each with a named owner; the single forward-looking date goes in `next_checkpoint`.
-   - When `action_item_log_url` is set, include **"See more detail here"** linked to that URL beneath the Project Summary. Never invent or search for a log URL.
+   - When `action_item_log_url` is set, pass it in the content JSON; the renderer shows **"See the full action item log here"** linked to that URL directly under the Open Action Items. Never invent or search for a log URL.
    - Fill the People row from the profile's `lead_consultant`, `project_manager`, and `account_manager`. If any of the three is missing, **ask once** (`AskUserQuestion`) and write the answer back to the profile before drafting. Never invent a name here.
    - Write the facts to a content JSON (schema in *Branding & Formatting*) and run `python scripts/build_report.py <content.json> working/<client-slug>.html`. Do **not** hand-write or restyle the HTML.
    - `CreateDraftMessage` to the point of contact, CC the internal team, and **BCC the profile's `netsuite_record_email`** so the report files itself to the NetSuite project record when the user sends it. `CreateDraftMessage` supports `bcc`, so use BCC and the client never sees the address; fall back to the CC line only if a BCC cannot be set. Skip it entirely when the profile has none. `body_file_path` points at the rendered file. **Draft only. Never send.**
@@ -164,7 +173,7 @@ On the **batch run**, do step 1 once, then repeat steps 2 through 7 per client. 
 
 8. **Always draft the weekly report.** Create a report for every client with a saved profile, whether or not a client meeting qualified that week. A no-meeting report still includes available weekly data and explicitly says no client meetings were held.
 
-9. **Close the batch** with one short message naming which clients have drafts waiting and any client whose hours could not be read.
+9. **Close the batch** with one short message naming which clients have drafts waiting. For any client whose hours could not be read, say so plainly: its draft carries the Power BI connection-error notice, which must be deleted before sending, or the report run again with *"weekly status for [client]"* (then delete the older draft).
 
 ---
 
@@ -223,7 +232,7 @@ A navy hero header, a row of KPI stat tiles, and airy overline sections. In orde
 
 **Hero header (navy)** — logo plus "Weekly Status" tag; the eyebrow "Project Status Update"; the **[Client Name]** reversed out in white; and the report date.
 
-**Stat tiles** (four) — **Est. Hours**, **Actual Hours**, **% of Estimate** (navy tile, green number), **Est. Go Live** (short form, e.g. "Aug 3"). The first three come from PM Reports; a tile shows a dash when the data is unavailable. There is no budget bar: a percentage-width fill bar cannot survive the mail pipeline (see *What the mail pipeline does to this HTML*), and the **% of Estimate** tile already carries the number.
+**Stat tiles** (four) — **Est. Hours**, **Actual Hours**, **% of Estimate** (navy tile, green number), **Est. Go Live** (short form, e.g. "Aug 3"). The first three come from PM Reports; a tile shows a dash when that one value is unavailable. When the whole Power BI read failed after retries, a highlighted **Power BI connection error** notice takes the tiles' place instead (see *Pull project hours*). There is no budget bar: a percentage-width fill bar cannot survive the mail pipeline (see *What the mail pipeline does to this HTML*), and the **% of Estimate** tile already carries the number.
 
 **Managed services stat tiles** (three, when the profile sets `managed_services: true`) — **Monthly Budget**, **Used This Month**, **Remaining** (navy tile, green number), for the current calendar month only, with a small **Hours as of [date]** line beneath. Used This Month turns red when it is over the budget, with no other wording; Remaining then shows 0.
 
@@ -231,12 +240,10 @@ A navy hero header, a row of KPI stat tiles, and airy overline sections. In orde
 
 **Project Summary** — one or two sentences on the week's focus.
 
-When configured, an **"See more detail here"** link to the client's action-item log appears directly beneath the Project Summary.
-
 Then these overline sections, skipping any with nothing explicit to report:
 - **Work Completed** — up to **3** accomplishments (green bullets).
 - **Decisions** — up to **2**; explicit decisions only.
-- **Open Action Items** — up to **3**, `☐ [item] (Owner: [Name])`, then one bold **Next checkpoint:** line drawn from `next_checkpoint`.
+- **Open Action Items** — up to **3**, `☐ [item] (Owner: [Name])`. When configured, a **"See the full action item log here"** link to the client's action-item log sits directly under the items. Then one bold **Next checkpoint:** line drawn from `next_checkpoint`. The section still appears when the log link is the only thing in it.
 
   **This is also where next steps go.** There is no separate Next Steps section. It duplicated this list one for one — the same four commitments appeared in both on a real report — so the two were merged into a single owned list. A `next_steps` array in an older content file is folded in here automatically; any entry without a named owner then fails the build.
 
@@ -263,7 +270,7 @@ Add `--wordmark` to force the text mark even when `logo_url` is set — it previ
   "logo_url": "",
   "est_hours": "120", "act_hours": "47.5", "pct_estimate": "40%",
   "completion_short": "Aug 3", "completion_label": "Est. Go Live",
-  "show_hours": true,
+  "show_hours": true, "hours_error": false,
   "managed_services": false, "monthly_budget_hours": "30", "month_hours_used": "12.5", "hours_as_of": "October 9, 2026",
   "pm": "…", "lead_consultant": "…", "account_manager": "…", "sponsor_label": "Account Manager",
   "summary": "one or two sentences",
@@ -281,8 +288,9 @@ Add `--wordmark` to force the text mark even when `logo_url` is set — it previ
 - `account_manager` is the third People-row name. The legacy key `sponsor` is still read, so profiles written before the relabel keep working.
 - `managed_services: true` swaps the four tiles for Monthly Budget, Used This Month, and Remaining. The renderer computes Remaining and the red. `hours_as_of` is required whenever `month_hours_used` is set, and the build fails without it. `est_hours`, `act_hours`, `pct_estimate`, and `completion_short` are ignored in this mode.
 - Omit any hours value you could not read and the tile shows a dash. Omit or empty any content list to drop that whole section. Omit `invoices` to hide that section.
+- `show_hours` is copied from the profile as is. When the tiles are on and the Power BI read failed after the retries in *Pull project hours*, set `"hours_error": true` and leave the hours values out: the tiles become the connection-error notice. With the tiles on, every hours value blank, and no `hours_error`, the build fails.
 - `next_checkpoint` renders as one bold line under the action items. Omit it and the line disappears; the action-items block still renders for the checkpoint alone if there are no open items.
-- `action_item_log_url` is optional; when present, it must be an HTTPS URL and renders beneath the Project Summary as **"See more detail here"**. Omit it or use `""` to hide the link.
+- `action_item_log_url` is optional; when present, it must be an HTTPS URL and renders directly under the Open Action Items as **"See the full action item log here"**. Omit it or use `""` to hide the link.
 - `next_steps` is retired. It is still accepted and folded into `action_items`, but write next steps straight into `action_items` with an owner. A bare-string next step has no owner, so it fails the build.
 - An action item with no owner, or an owner of `TBD`, fails the build. Drop the item rather than inventing an owner.
 - Never fabricate figures. Leave a value out rather than guessing.
@@ -365,5 +373,6 @@ Scheduled runs are safe unattended because the skill only ever drafts.
 - **Resolve recipients** with people tools. If a name has multiple matches, confirm before saving.
 - **The NetSuite record address is a machine dropbox, not a person.** BCC it (CC only if a BCC cannot be set), never put it on the To: line, and never look it up with people tools. Copy it verbatim from the project record — a mistyped address silently files nothing.
 - **Confirm, don't infer.** Every field that reaches the report — recipients, CC, and the People row — is confirmed with the user at setup. If a value is missing or uncertain at run time, ask once and write it back to the profile rather than guessing or shipping a blank.
-- **Retrieve once.** One calendar pull per run, one source per meeting, one Inbox query, one Sent Items query, and one Teams chat pass. Retrieval is what this costs to run.
+- **Retrieve once.** One calendar pull per run, one source per meeting, one Inbox query, one Sent Items query, and one Teams chat pass. Retrieval is what this costs to run. The one exception is a **failed** Power BI read, which is retried as *Pull project hours* describes; a successful read is never repeated.
+- **A failed read is never a preference.** Hours that could not be read become the connection-error notice, not hidden tiles, and nothing about the failure is saved to the profile.
 - **Portable.** Keep settings in `clients/`, and keep the skill free of personal data and of references to other skills, so it can be deployed across the team.

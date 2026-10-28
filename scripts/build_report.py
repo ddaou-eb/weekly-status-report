@@ -47,7 +47,14 @@ content.json schema (all keys optional unless noted):
   "est_hours": "120", "act_hours": "47.5", # from PM Reports (Power BI); omit -> shown as "-"
   "pct_estimate": "40%",                    # "% of Estimate" tile; a bare number is
                                             # accepted and normalized to "40%"
-  "show_hours": true,                       # false -> drop the four stat tiles entirely
+  "show_hours": true,                       # false -> drop the four stat tiles entirely.
+                                            # Copied from the client profile as is; never
+                                            # set to false because a Power BI read failed
+  "hours_error": false,                     # true -> the Power BI read failed after retries:
+                                            # the tiles are replaced by a loud notice telling
+                                            # the PM to delete it or re-run before sending.
+                                            # With show_hours on, every hours value blank and
+                                            # no hours_error fails the build
   "managed_services": false,                # true -> three current-month tiles instead:
   "monthly_budget_hours": "30",             #   Monthly Budget, Used This Month (red when
   "month_hours_used": "12.5",               #   over budget), Remaining. No rollover.
@@ -63,6 +70,8 @@ content.json schema (all keys optional unless noted):
   "next_steps": ["...", "..."],
   "decisions": ["..."],
   "action_items": [{"text": "...", "owner": "Name"}],   # max 3, <=20 words each, owner required
+  "action_item_log_url": "https://...",     # optional; "See the full action item log here"
+                                            # directly under the action items
   "next_checkpoint": "Weekly status call, Wednesday Sept 2 at 11:00 AM ET",
                                             # renders as one bold line under the
                                             # action items; replaces the old
@@ -681,7 +690,7 @@ def next_checkpoint_html(value):
 
 
 def action_item_log_link_html(value):
-    """Render the optional external action-item log link."""
+    """Render the optional external action-item log link, under the action items."""
     if not value:
         return ""
     url = str(value).strip()
@@ -689,10 +698,58 @@ def action_item_log_link_html(value):
     if parsed.scheme.lower() != "https" or not parsed.hostname or parsed.username or parsed.password:
         sys.exit("ERROR: action_item_log_url must be an HTTPS URL with a host.")
     return (
-        '<p style="margin:8px 0 0;font-family:Calibri,\'Segoe UI\',Arial,sans-serif;'
+        '\n    <p style="margin:6px 0 0;font-family:Calibri,\'Segoe UI\',Arial,sans-serif;'
         'font-size:14px;line-height:1.5;color:#0E172D;">'
         '<a href="{url}" style="color:#267A45;text-decoration:underline;">'
-        'See more detail here</a></p>'.format(url=attr(url))
+        'See the full action item log here</a></p>'.format(url=attr(url))
+    )
+
+
+def has_text(value):
+    return bool(str(value or "").strip())
+
+
+def enforce_hours_present(content):
+    """Fail the build when the tiles are on but no hours were supplied.
+
+    Every hours value blank is the signature of a failed Power BI read. Without
+    this check the report quietly ships a row of dashes, or the drafting model
+    "fixes" it by switching the tiles off. Either the read succeeds, or the draft
+    says out loud that it did not (hours_error).
+    """
+    if content.get("show_hours") is False or content.get("hours_error") is True:
+        return
+    if content.get("managed_services") is True:
+        keys = ("month_hours_used",)
+    else:
+        keys = ("est_hours", "act_hours", "pct_estimate", "completion_short")
+    if not any(has_text(content.get(k)) for k in keys):
+        sys.exit(
+            "ERROR: the hours tiles are on for this client, but no hours were supplied "
+            "({}). A blank result is a failed Power BI read, not a reason to drop the "
+            "tiles: retry the PM Reports read. If it still fails, set \"hours_error\": true "
+            "so the draft carries the connection-error notice. Never set show_hours to "
+            "false, here or on the client profile, because a read failed.".format(", ".join(keys)))
+
+
+def hours_error_html():
+    """Stands in for the stat tiles when Power BI could not be read. Loud on purpose:
+    it is an instruction to the PM, and must not reach the client."""
+    return (
+        SECTION_ANCHORS["_stat_tiles"][0] + '\n  <tr>\n  <td style="padding:24px 36px 6px;">\n'
+        '    <table role="presentation" style="width:100%;background-color:#FFF4E0;'
+        'border:2px solid #E6A23C;border-collapse:collapse;">\n'
+        '      <tbody><tr><td style="padding:14px 16px;font-family:Calibri,\'Segoe UI\',Arial,sans-serif;'
+        'font-size:14px;line-height:1.5;color:#0E172D;">\n'
+        '        <div style="font-family:\'Segoe UI\',Arial,sans-serif;font-size:12px;font-weight:700;'
+        'letter-spacing:0.06em;text-transform:uppercase;color:#9A5B00;">'
+        'Remove before sending: Power BI connection error</div>\n'
+        '        <div style="padding-top:6px;">The Power BI connection encountered an error, so the '
+        'project hours could not be loaded. Before sending, either delete this notice and send the '
+        'report without hours, or run the report again in Cowork. Trying again usually fixes it.</div>\n'
+        '      </td></tr>\n'
+        '      </tbody></table>\n'
+        '  </td>\n  </tr>\n\n  '
     )
 
 
@@ -706,6 +763,7 @@ def main():
     fold_next_steps(content)
     enforce_brevity(content)
     enforce_voice(content)
+    enforce_hours_present(content)
     plain_language_warnings(content)
 
     html = TEMPLATE.read_text(encoding="utf-8")
@@ -718,14 +776,18 @@ def main():
 
     # remove optional sections with no content
     for key in ["work_completed", "decisions", "action_items", "risks"]:
-        # the checkpoint line lives inside the action-items block, so that block
-        # survives an empty list whenever a checkpoint still needs somewhere to sit
-        if key == "action_items" and content.get("next_checkpoint"):
+        # the checkpoint line and the log link live inside the action-items block, so
+        # that block survives an empty list whenever either still needs somewhere to sit
+        if key == "action_items" and (content.get("next_checkpoint") or content.get("action_item_log_url")):
             continue
         if not content.get(key):
             html = drop_between(html, *SECTION_ANCHORS[key])
     if content.get("show_hours") is False:
         html = drop_between(html, *SECTION_ANCHORS["_stat_tiles"])
+    elif content.get("hours_error") is True:
+        at = html.find(SECTION_ANCHORS["_stat_tiles"][0])
+        html = drop_between(html, *SECTION_ANCHORS["_stat_tiles"])
+        html = html[:at] + hours_error_html() + html[at:]
     elif content.get("managed_services") is True:
         at = html.find(SECTION_ANCHORS["_stat_tiles"][0])
         html = drop_between(html, *SECTION_ANCHORS["_stat_tiles"])
@@ -778,6 +840,10 @@ def main():
 
     pathlib.Path(args[1]).write_text(html, encoding="utf-8")
     print("wrote", args[1], "(" + str(len(html)) + " bytes)")
+    if content.get("hours_error") is True and content.get("show_hours") is not False:
+        print("WARNING: hours could not be read, so the draft carries the Power BI "
+              "connection-error notice. Tell the user it must be deleted, or the report "
+              "re-run, before sending.")
     if "<img" not in html:
         print("NOTE: rendered with the text wordmark. Set logo_url (https) on the "
               "profile to carry the real logo image.")
