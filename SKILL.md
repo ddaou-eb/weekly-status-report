@@ -170,10 +170,11 @@ On the **batch run**, do step 1 once, then repeat steps 2 through 7 per client. 
    - Write the facts to a content JSON (schema in *Branding & Formatting*) and run `python scripts/build_report.py <content.json> working/<client-slug>.html`. Do **not** hand-write or restyle the HTML.
    - `CreateDraftMessage` to the point of contact, CC the internal team, and **BCC the profile's `netsuite_record_email`** so the report files itself to the NetSuite project record when the user sends it. `CreateDraftMessage` supports `bcc`, so use BCC and the client never sees the address; fall back to the CC line only if a BCC cannot be set. Skip it entirely when the profile has none. `body_file_path` points at the rendered file. **Draft only. Never send.**
    - Subject line: **`Weekly Status Update | [Client] | [Report date]`**.
+   - **Check the stored draft before moving on.** Read it back with `QueryGraph` on `/me/messages/{id}?$select=subject,toRecipients,ccRecipients,bccRecipients,body` and confirm: the subject matches the format above; To, CC, and BCC match the profile; the People row matches the profile; the hours match what was read, or the connection-error notice is there; every bullet and action item is within the word caps and traces to this week's meetings, email, or chats under the **Evidence Bar**; every action item has a named owner. If anything fails, fix the content JSON, rebuild, create a corrected draft, delete the faulty one, and check again, up to three rounds. Anything still failing goes in the closing message.
 
 8. **Always draft the weekly report.** Create a report for every client with a saved profile, whether or not a client meeting qualified that week. A no-meeting report still includes available weekly data and explicitly says no client meetings were held.
 
-9. **Close the batch** with one short message naming which clients have drafts waiting. For any client whose hours could not be read, say so plainly: its draft carries the Power BI connection-error notice, which must be deleted before sending, or the report run again with *"weekly status for [client]"* (then delete the older draft).
+9. **Close the batch** with one short message naming which clients have drafts waiting, and one line per client on the draft checks: passed, or what still failed. For any client whose hours could not be read, say so plainly: its draft carries the Power BI connection-error notice, which must be deleted before sending, or the report run again with *"weekly status for [client]"* (then delete the older draft).
 
 ---
 
